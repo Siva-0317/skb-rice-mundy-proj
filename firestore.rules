@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if user is signed in
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Fetch user's role and check if they are 'owner'
+    function isOwner() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    }
+
+    // Global Deny Delete: No one can delete any record, ever.
+    // Corrections should be made via adjusting entries for audit trails.
+    // (We enforce this below by omitting 'delete' from allow rules)
+
+    // Master Data: Only owners can write (create/update), anyone authenticated can read
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner();
+      allow delete: if false;
+    }
+
+    match /items/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner();
+      allow delete: if false;
+    }
+
+    // Users Collection: Users can read their own profile, only owners can edit
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow create, update: if isOwner();
+      allow delete: if false;
+    }
+
+    // Transactions & Profiles: Any authenticated user can create/update, nobody deletes
+    match /customers/{customerId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+
+      match /ledger/{entryId} {
+        allow read, create, update: if isAuthenticated();
+        allow delete: if false;
+      }
+    }
+
+    match /suppliers/{supplierId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+
+      match /ledger/{entryId} {
+        allow read, create, update: if isAuthenticated();
+        allow delete: if false;
+      }
+    }
+
+    match /sales/{saleId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    match /purchases/{purchaseId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // Counters: Any authenticated user can update auto-increment counters
+    match /counters/{counterId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+  }
+}

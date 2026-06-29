@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans bg-bg text-textDark;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+}

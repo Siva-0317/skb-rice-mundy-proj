@@ -1,0 +1,137 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Plus } from 'lucide-react';
+import { getSuppliers } from '../firebase/suppliers';
+import { useToast } from '../context/ToastContext';
+import AddSupplierModal from './AddSupplierModal';
+
+export default function SuppliersList() {
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const fetchSuppliers = async () => {
+    try {
+      const data = await getSuppliers();
+      setSuppliers(data);
+    } catch (error) {
+      console.error("Error fetching suppliers:", error);
+      showToast("Failed to load suppliers", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuppliers();
+  }, []);
+
+  const handleModalSuccess = () => {
+    fetchSuppliers();
+  };
+
+  const filteredSuppliers = suppliers.filter(s => 
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    s.phone.includes(searchQuery)
+  );
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '-';
+    return new Date(timestamp.toDate()).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
+          <input 
+            type="text" 
+            placeholder="Search by name or phone..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white border border-border rounded-lg pl-10 pr-4 py-2 text-base sm:text-sm text-textDark focus:outline-none focus:ring-2 focus:ring-gold/50 shadow-sm min-h-[44px]"
+          />
+        </div>
+        
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center justify-center gap-2 bg-gold text-white px-4 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium text-sm shadow-sm whitespace-nowrap min-h-[44px]"
+        >
+          <Plus className="w-4 h-4" />
+          Add Supplier
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
+        <div className="overflow-x-auto max-h-[70vh]">
+          <table className="w-full text-left border-collapse min-w-[700px]">
+            <thead className="sticky top-0 z-10 bg-panel shadow-sm">
+              <tr className="uppercase text-xs text-textMuted border-b border-border">
+                <th className="py-3 px-6 font-medium">Name</th>
+                <th className="py-3 px-6 font-medium">Phone</th>
+                <th className="py-3 px-6 font-medium text-right">Balance Payable</th>
+                <th className="py-3 px-6 font-medium text-center">Status</th>
+                <th className="py-3 px-6 font-medium text-center">Purchases</th>
+                <th className="py-3 px-6 font-medium text-center">Last Purchase</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="6" className="py-8 text-center text-textMuted text-sm">Loading suppliers...</td>
+                </tr>
+              ) : filteredSuppliers.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-8 text-center text-textMuted text-sm">No suppliers found.</td>
+                </tr>
+              ) : (
+                filteredSuppliers.map(supplier => (
+                  <tr 
+                    key={supplier.id} 
+                    onClick={() => navigate(`/suppliers/${supplier.id}`)}
+                    className="border-b border-border hover:bg-panel/50 transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 px-6 text-sm font-medium text-textDark">{supplier.name}</td>
+                    <td className="py-3 px-6 text-sm text-textMuted">{supplier.phone}</td>
+                    <td className="py-3 px-6 text-sm text-right font-medium">
+                      {supplier.balance > 0 ? (
+                        <span className="text-debit">₹{supplier.balance.toLocaleString('en-IN')}</span>
+                      ) : (
+                        <span className="text-textMuted">Settled</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-6 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        supplier.status === 'Overdue' 
+                          ? 'bg-debit/10 text-debit border-debit/20' 
+                          : 'bg-credit/10 text-credit border-credit/20'
+                      }`}>
+                        {supplier.status === 'Overdue' ? 'Overdue' : 'Active'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-6 text-sm text-textMuted text-center">{supplier.txnCount || 0}</td>
+                    <td className="py-3 px-6 text-sm text-textMuted text-center">
+                      {formatDate(supplier.lastPurchase)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <AddSupplierModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={handleModalSuccess} 
+      />
+    </div>
+  );
+}
