@@ -49,9 +49,15 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
   return customerRef.id;
 };
 
-export const recordPayment = async (customerId, amount) => {
+export const recordPayment = async (customerId, paymentData) => {
+  const amount = typeof paymentData === 'object' && paymentData !== null ? paymentData.amount : paymentData;
+  const mode = typeof paymentData === 'object' && paymentData !== null && paymentData.mode ? paymentData.mode : 'Cash';
+  const note = typeof paymentData === 'object' && paymentData !== null && paymentData.note ? paymentData.note : '';
+
   const numAmount = Number(amount);
   if (numAmount <= 0) throw new Error("Payment amount must be greater than 0");
+
+  const desc = note?.trim() ? note.trim() : `Payment received (${mode})`;
 
   const customerRef = doc(db, "customers", customerId);
   const newLedgerRef = doc(collection(db, "customers", customerId, "ledger"));
@@ -68,7 +74,9 @@ export const recordPayment = async (customerId, amount) => {
 
     transaction.set(newLedgerRef, {
       type: 'payment',
-      desc: 'Payment received',
+      desc,
+      mode,
+      note: note || '',
       debit: 0,
       credit: numAmount,
       balanceAfter: newBalance,

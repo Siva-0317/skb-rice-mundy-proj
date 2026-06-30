@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X } from 'lucide-react';
+import { ArrowLeft, X, Pencil } from 'lucide-react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { getCustomer, getCustomerLedger, recordPayment } from '../firebase/customers';
+import { editLedgerEntry } from '../firebase/ledger';
+import { PAYMENT_MODES } from '../utils/constants';
 import { useToast } from '../context/ToastContext';
 
 export default function CustomerDetails() {
@@ -19,7 +21,15 @@ export default function CustomerDetails() {
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editMode, setEditMode] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   const fetchCustomerData = async () => {
     try {
@@ -50,16 +60,59 @@ export default function CustomerDetails() {
 
   const handlePayment = async (e) => {
     e.preventDefault();
+    if (!paymentMode) {
+      showToast("Please select a payment mode", "error");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await recordPayment(id, paymentAmount);
+      await recordPayment(id, { amount: paymentAmount, mode: paymentMode, note: paymentNote });
       showToast("Payment recorded successfully!");
       setIsPaymentModalOpen(false);
       setPaymentAmount('');
+      setPaymentMode('');
+      setPaymentNote('');
       await fetchCustomerData(); // refresh data
     } catch (error) {
       console.error("Error recording payment:", error);
       showToast(error.message || "Failed to record payment", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEditPayment = (entry) => {
+    if (ledger[0]?.id !== entry.id) {
+      showToast("Only the most recent payment can be edited", "error");
+      return;
+    }
+    setEditingPayment(entry);
+    setEditAmount(String(entry.credit || entry.debit || ''));
+    setEditMode(entry.mode || 'Cash');
+    setEditNote(entry.note || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditPayment = async (e) => {
+    e.preventDefault();
+    if (!editMode) {
+      showToast("Please select a payment mode", "error");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await editLedgerEntry('customer', id, editingPayment.id, {
+        amount: editAmount,
+        mode: editMode,
+        note: editNote
+      });
+      showToast("Payment updated successfully!");
+      setIsEditModalOpen(false);
+      setEditingPayment(null);
+      await fetchCustomerData();
+    } catch (error) {
+      console.error("Error updating payment:", error);
+      showToast(error.message || "Failed to update payment", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -152,10 +205,28 @@ export default function CustomerDetails() {
                       <td colSpan="5" className="py-8 text-center text-textMuted text-sm">No ledger entries found.</td>
                     </tr>
                   ) : (
-                    ledger.map(entry => (
+                    ledger.map((entry, idx) => (
                       <tr key={entry.id} className="border-b border-border hover:bg-panel/50 transition-colors">
                         <td className="py-3 px-6 text-sm text-textMuted">{formatDate(entry.date)}</td>
-                        <td className="py-3 px-6 text-sm font-medium text-textDark">{entry.desc}</td>
+                        <td className="py-3 px-6 text-sm font-medium text-textDark">
+                          <div className="flex items-center gap-2">
+                            <span>{entry.desc}</span>
+                            {entry.type === 'payment' && entry.mode && (
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20">
+                                {entry.mode}
+                              </span>
+                            )}
+                            {entry.type === 'payment' && idx === 0 && (
+                              <button
+                                onClick={() => handleOpenEditPayment(entry)}
+                                className="p-1 text-textMuted hover:text-gold transition-colors rounded hover:bg-panel/50 inline-flex items-center justify-center"
+                                title="Edit Payment"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-6 text-sm text-right font-medium text-debit">
                           {entry.debit > 0 ? `₹${entry.debit.toLocaleString('en-IN')}` : '-'}
                         </td>
@@ -223,8 +294,8 @@ export default function CustomerDetails() {
               </button>
             </div>
             
-            <form onSubmit={handlePayment} className="p-5 overflow-y-auto">
-              <div className="bg-panel/50 p-4 rounded-lg border border-border mb-6">
+            <form onSubmit={handlePayment} className="p-5 overflow-y-auto space-y-4">
+              <div className="bg-panel/50 p-4 rounded-lg border border-border">
                 <p className="text-sm text-textMuted mb-1">Customer</p>
                 <p className="font-semibold text-textDark mb-3">{customer.name}</p>
                 
@@ -232,8 +303,23 @@ export default function CustomerDetails() {
                 <p className="font-bold text-debit text-xl">₹{customer.balance.toLocaleString('en-IN')}</p>
               </div>
 
-               <div>
-                <label className="block text-sm font-medium text-textDark mb-1">Amount Paid (₹)</label>
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Payment Mode <span className="text-debit">*</span></label>
+                <select
+                  required
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px] bg-white"
+                >
+                  <option value="">Select Mode</option>
+                  {PAYMENT_MODES.map(mode => (
+                    <option key={mode} value={mode}>{mode}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Amount Paid (₹) <span className="text-debit">*</span></label>
                 <input
                   type="number"
                   required
@@ -247,7 +333,18 @@ export default function CustomerDetails() {
                 />
               </div>
 
-              <div className="flex justify-end gap-3 mt-8">
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Note (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paid via Ramesh's account"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setIsPaymentModalOpen(false)}
@@ -261,6 +358,78 @@ export default function CustomerDetails() {
                   className="px-4 py-2 rounded-lg font-medium text-sm bg-gold text-white hover:bg-gold/90 transition-colors disabled:opacity-70 min-h-[44px]"
                 >
                   {isSubmitting ? 'Saving...' : 'Save Payment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment Modal */}
+      {isEditModalOpen && editingPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-border flex flex-col">
+            <div className="flex justify-between items-center p-5 border-b border-border">
+              <h3 className="font-display font-semibold text-lg text-brownDark">Edit Payment</h3>
+              <button onClick={() => { setIsEditModalOpen(false); setEditingPayment(null); }} className="text-textMuted hover:text-textDark transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveEditPayment} className="p-5 overflow-y-auto space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Payment Mode <span className="text-debit">*</span></label>
+                <select
+                  required
+                  value={editMode}
+                  onChange={(e) => setEditMode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px] bg-white"
+                >
+                  <option value="">Select Mode</option>
+                  {PAYMENT_MODES.map(mode => (
+                    <option key={mode} value={mode}>{mode}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Amount Paid (₹) <span className="text-debit">*</span></label>
+                <input
+                  type="number"
+                  required
+                  min="0.01"
+                  step="0.01"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Note (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paid via Ramesh's account"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditModalOpen(false); setEditingPayment(null); }}
+                  className="px-4 py-2 rounded-lg font-medium text-sm text-brownDark border border-brownDark hover:bg-brownDark/5 transition-colors min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg font-medium text-sm bg-gold text-white hover:bg-gold/90 transition-colors disabled:opacity-70 min-h-[44px]"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>
