@@ -1,4 +1,4 @@
-import { doc, collection, getDocs, query, orderBy, limit, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 
 export const getNextPurchaseBill = async () => {
@@ -103,4 +103,146 @@ export const createPurchase = async ({ supplierId, supplierName, date, advance, 
   });
 
   return finalBillNo;
+};
+
+export const editPurchase = async (purchaseId, updatedData, uid) => {
+  const { supplierId: newSupplierId, supplierName: newSupplierName, date, advance, remarks, rows } = updatedData;
+  const numAdvance = Number(advance) || 0;
+  let computedNewTotal = 0;
+  
+  const enrichedRows = rows.map(r => {
+    const amount = Number(r.bags) * Number(r.rate);
+    computedNewTotal += amount;
+    return { ...r, amount };
+  });
+  computedNewTotal -= numAdvance;
+
+  const purchaseRef = doc(db, "purchases", purchaseId);
+
+  return await runTransaction(db, async (transaction) => {
+    // 1. READS
+    const oldPurchaseDoc = await transaction.get(purchaseRef);
+    if (!oldPurchaseDoc.exists()) {
+      throw new Error("Purchase bill not found.");
+    }
+    const oldPurchase = oldPurchaseDoc.data();
+    const oldSupplierId = oldPurchase.supplierId;
+    const oldNumAdvance = Number(oldPurchase.advance) || 0;
+    
+    let computedOldTotal = 0;
+    if (oldPurchase.items && Array.isArray(oldPurchase.items)) {
+      oldPurchase.items.forEach(r => {
+        computedOldTotal += (Number(r.bags) || 0) * (Number(r.rate) || 0);
+      });
+    }
+    computedOldTotal -= oldNumAdvance;
+
+    const oldSupplierRef = doc(db, "suppliers", oldSupplierId);
+    const oldSupplierDoc = await transaction.get(oldSupplierRef);
+    if (!oldSupplierDoc.exists()) {
+      throw new Error("Original supplier not found.");
+    }
+
+    let newSupplierRef = oldSupplierRef;
+    let newSupplierDoc = oldSupplierDoc;
+    if (newSupplierId !== oldSupplierId) {
+      newSupplierRef = doc(db, "suppliers", newSupplierId);
+      newSupplierDoc = await transaction.get(newSupplierRef);
+      if (!newSupplierDoc.exists()) {
+        throw new Error("New supplier not found.");
+      }
+    }
+
+    // Net stock differences: old purchase added stock (- when reverting), new purchase adds stock (+ when applying)
+    const itemNetDelta = new Map();
+    if (oldPurchase.items && Array.isArray(oldPurchase.items)) {
+      oldPurchase.items.forEach(r => {
+        if (r.itemId) {
+          itemNetDelta.set(r.itemId, (itemNetDelta.get(r.itemId) || 0) - (Number(r.bags) || 0));
+        }
+      });
+    }
+    enrichedRows.forEach(r => {
+      if (r.itemId) {
+        itemNetDelta.set(r.itemId, (itemNetDelta.get(r.itemId) || 0) + (Number(r.bags) || 0));
+      }
+    });
+
+    const uniqueItemIds = Array.from(itemNetDelta.keys()).filter(Boolean);
+    const itemDocsMap = new Map();
+    for (const itemId of uniqueItemIds) {
+      const itemRef = doc(db, "items", itemId);
+      itemDocsMap.set(itemId, { ref: itemRef, doc: await transaction.get(itemRef) });
+    }
+
+    const ledgerQuery = query(collection(db, "suppliers", oldSupplierId, "ledger"), where("refId", "==", purchaseId));
+    const ledgerSnap = await transaction.get(ledgerQuery);
+
+    // 2. WRITES
+    // Stock updates
+    itemDocsMap.forEach(({ ref, doc: snap }, itemId) => {
+      if (snap.exists()) {
+        const delta = itemNetDelta.get(itemId) || 0;
+        if (delta !== 0) {
+          const currentStock = snap.data().stock || 0;
+          transaction.update(ref, { stock: currentStock + delta });
+        }
+      }
+    });
+
+    // Supplier balance and Ledger updates
+    if (newSupplierId === oldSupplierId) {
+      const currentBalance = oldSupplierDoc.data().balance || 0;
+      const balanceAfter = currentBalance + (computedNewTotal - computedOldTotal);
+      transaction.update(oldSupplierRef, { balance: balanceAfter });
+
+      if (!ledgerSnap.empty) {
+        transaction.update(ledgerSnap.docs[0].ref, {
+          desc: `Bill ${oldPurchase.billNo} (edited)`,
+          credit: computedNewTotal,
+          balanceAfter: balanceAfter
+        });
+      }
+    } else {
+      const oldSuppBalance = (oldSupplierDoc.data().balance || 0) - computedOldTotal;
+      transaction.update(oldSupplierRef, { balance: oldSuppBalance });
+
+      if (!ledgerSnap.empty) {
+        transaction.update(ledgerSnap.docs[0].ref, {
+          credit: 0,
+          desc: `Bill ${oldPurchase.billNo} (moved to ${newSupplierName})`,
+          balanceAfter: oldSuppBalance
+        });
+      }
+
+      const newSuppBalance = (newSupplierDoc.data().balance || 0) + computedNewTotal;
+      transaction.update(newSupplierRef, { balance: newSuppBalance });
+
+      const freshLedgerRef = doc(collection(db, "suppliers", newSupplierId, "ledger"));
+      transaction.set(freshLedgerRef, {
+        type: 'purchase',
+        desc: `Bill ${oldPurchase.billNo}`,
+        debit: 0,
+        credit: computedNewTotal,
+        balanceAfter: newSuppBalance,
+        date: serverTimestamp(),
+        refId: purchaseId
+      });
+    }
+
+    // Update purchase doc
+    transaction.update(purchaseRef, {
+      supplierId: newSupplierId,
+      supplierName: newSupplierName,
+      date: new Date(date),
+      advance: numAdvance,
+      remarks,
+      items: enrichedRows,
+      totalAmount: computedNewTotal,
+      editedAt: serverTimestamp(),
+      editedBy: uid || null
+    });
+
+    return oldPurchase.billNo;
+  });
 };

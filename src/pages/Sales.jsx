@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, IndianRupee } from 'lucide-react';
+import { useState, useEffect, useContext } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight, IndianRupee, Pencil } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCategories, getItems } from '../firebase/items';
-import { createSale, getNextBillNo, getRecentSales } from '../firebase/sales';
+import { createSale, editSale, getNextBillNo, getRecentSales } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
+import { AuthContext } from '../context/AuthContext';
 import AddCustomerModal from '../components/AddCustomerModal';
 import InvoiceRowsTable from '../components/InvoiceRowsTable';
 
 export default function Sales() {
+  const { user } = useContext(AuthContext);
   // Master Data
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -20,6 +22,9 @@ export default function Sales() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [recentSalesOpen, setRecentSalesOpen] = useState(true);
+  const [editingSaleId, setEditingSaleId] = useState(null);
+  const [editingBillNo, setEditingBillNo] = useState('');
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const { showToast } = useToast();
 
   // Form State
@@ -122,9 +127,66 @@ export default function Sales() {
   const finalTotal = totalItemsAmount - numAdvance;
   const isValidSale = customerId && calculatedRows.some(r => r.itemId && Number(r.bags) > 0);
 
+  const handleEditClick = (sale) => {
+    setEditingSaleId(sale.id);
+    setEditingBillNo(sale.billNo);
+    setCustomerId(sale.customerId);
+    
+    let formattedDate = new Date().toISOString().split('T')[0];
+    if (sale.date) {
+      const d = typeof sale.date === 'string' ? new Date(sale.date) : (sale.date.toDate ? sale.date.toDate() : new Date(sale.date));
+      if (!isNaN(d.getTime())) {
+        formattedDate = d.toISOString().split('T')[0];
+      }
+    }
+    setDate(formattedDate);
+    setAdvance(sale.advance !== undefined ? String(sale.advance) : '');
+    setRemarks(sale.remarks || '');
+
+    if (sale.items && Array.isArray(sale.items) && sale.items.length > 0) {
+      const formRows = sale.items.map((item, idx) => {
+        const masterItem = items.find(i => i.id === item.itemId) || { id: item.itemId, name: item.item, bagKg: item.bagKg, rate: item.rate };
+        return {
+          id: Date.now() + idx,
+          categoryKey: item.cat || masterItem.categoryKey || '',
+          itemId: item.itemId,
+          item: masterItem,
+          bags: String(item.bags || ''),
+          bagKg: String(item.bagKg || ''),
+          rate: String(item.rate || '')
+        };
+      });
+      setRows(formRows);
+    } else {
+      setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSaleId(null);
+    setEditingBillNo('');
+    setCustomerId('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setAdvance('');
+    setRemarks('');
+    setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+  };
+
   const handleSubmit = async () => {
     if (!isValidSale) return;
+    if (editingSaleId) {
+      setConfirmModalOpen(true);
+      return;
+    }
+    await executeSave();
+  };
+
+  const executeSave = async () => {
+    if (!isValidSale) return;
     setIsSubmitting(true);
+    setConfirmModalOpen(false);
     try {
       const selectedCustomer = customers.find(c => c.id === customerId);
       
@@ -132,7 +194,7 @@ export default function Sales() {
         .filter(r => r.itemId && Number(r.bags) > 0)
         .map(r => ({
           itemId: r.itemId,
-          item: r.item.name,
+          item: r.item?.name || r.item,
           cat: r.categoryKey,
           bags: Number(r.bags),
           bagKg: Number(r.bagKg),
@@ -147,30 +209,42 @@ export default function Sales() {
         }
       });
 
-      const billNo = await createSale({
-        customerId,
-        customerName: selectedCustomer.name,
-        date,
-        advance: numAdvance,
-        remarks,
-        rows: payloadRows
-      });
+      if (editingSaleId) {
+        await editSale(editingSaleId, {
+          customerId,
+          customerName: selectedCustomer.name,
+          date,
+          advance: numAdvance,
+          remarks,
+          rows: payloadRows
+        }, user?.uid);
 
-      showToast(`Bill ${billNo} created successfully!`, "success");
+        showToast(`Bill ${editingBillNo} updated`, "success");
+        handleCancelEdit();
+      } else {
+        const billNo = await createSale({
+          customerId,
+          customerName: selectedCustomer.name,
+          date,
+          advance: numAdvance,
+          remarks,
+          rows: payloadRows
+        });
+
+        showToast(`Bill ${billNo} created successfully!`, "success");
+        
+        // Reset Form
+        setCustomerId('');
+        setDate(new Date().toISOString().split('T')[0]);
+        setAdvance('');
+        setRemarks('');
+        setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+      }
       
-      // Reset Form
-      setCustomerId('');
-      setDate(new Date().toISOString().split('T')[0]);
-      setAdvance('');
-      setRemarks('');
-      setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
-      
-      // Refresh necessary data
       await loadData();
-      
     } catch (error) {
       console.error("Sale error:", error);
-      showToast("Failed to create sale", "error");
+      showToast(editingSaleId ? "Failed to update sale" : "Failed to create sale", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -192,9 +266,21 @@ export default function Sales() {
         <div className="lg:w-2/3 flex flex-col gap-6">
           <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
             <div className="p-5 border-b border-border flex justify-between items-center bg-panel/30">
-              <h2 className="font-display text-xl font-semibold text-brownDark">New Sale Invoice</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="font-display text-xl font-semibold text-brownDark">
+                  {editingSaleId ? `Editing Bill ${editingBillNo}` : 'New Sale Invoice'}
+                </h2>
+                {editingSaleId && (
+                  <button 
+                    onClick={handleCancelEdit} 
+                    className="text-xs text-textMuted hover:text-debit underline font-medium"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+              </div>
               <span className="text-sm font-medium text-textMuted bg-white px-3 py-1 rounded-full border border-border">
-                Next: {nextBillNo}
+                {editingSaleId ? `Bill: ${editingBillNo}` : `Next: ${nextBillNo}`}
               </span>
             </div>
             
@@ -289,13 +375,22 @@ export default function Sales() {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4">
+              <div className="flex justify-end items-center gap-3 pt-4">
+                {editingSaleId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-6 py-3 rounded-xl font-medium border border-border text-textDark hover:bg-panel/30 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
                   onClick={handleSubmit}
                   disabled={!isValidSale || isSubmitting}
                   className="bg-gold text-white px-8 py-3 rounded-xl font-medium shadow-sm hover:bg-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Sale Invoice'}
+                  {isSubmitting ? 'Saving...' : (editingSaleId ? 'Update Sale' : 'Save Sale Invoice')}
                 </button>
               </div>
 
@@ -323,9 +418,18 @@ export default function Sales() {
                     <div key={sale.id} className="p-4 hover:bg-panel/20 transition-colors">
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-medium text-textDark">{sale.customerName}</span>
-                        <span className="text-xs font-medium text-textMuted bg-bg px-2 py-0.5 rounded border border-border">
-                          {sale.billNo.split('-').pop()}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-textMuted bg-bg px-2 py-0.5 rounded border border-border">
+                            {sale.billNo.split('-').pop()}
+                          </span>
+                          <button 
+                            onClick={() => handleEditClick(sale)} 
+                            className="p-1.5 text-textMuted hover:text-gold transition-colors rounded hover:bg-panel/50 inline-flex items-center justify-center"
+                            title="Edit Sale"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                       <div className="text-xs text-textMuted mb-2">
                         {formatDate(sale.date)}
@@ -357,6 +461,35 @@ export default function Sales() {
         onClose={() => setIsAddCustomerOpen(false)}
         onSuccess={handleCustomerAdded}
       />
+
+      {confirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-border">
+            <h3 className="font-display text-lg font-semibold text-brownDark mb-2">
+              Save changes to Bill {editingBillNo}?
+            </h3>
+            <p className="text-sm text-textMuted mb-6">
+              This will adjust stock and {customers.find(c => c.id === customerId)?.name || 'customer'}'s balance accordingly.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmModalOpen(false)}
+                disabled={isSubmitting}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-textDark hover:bg-panel/30 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeSave}
+                disabled={isSubmitting}
+                className="px-5 py-2 rounded-lg bg-gold text-white text-sm font-medium shadow-sm hover:bg-gold/90 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
