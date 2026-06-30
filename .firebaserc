@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "skb-rice-mundy"
-  }
+    "default": "skb-rice-mundy-70e44",
+    "prod": "skb-rice-mundy-70e44"
+  },
+  "targets": {},
+  "etags": {}
 }

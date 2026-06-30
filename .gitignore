@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.env
+
+# Seed script credentials and modules
+/seed/serviceAccountKey.json
+/seed/node_modules

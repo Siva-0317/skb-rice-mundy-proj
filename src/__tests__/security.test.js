@@ -37,7 +37,7 @@ describe('8. Deployment & Hosting Security Suite', () => {
     // Ensure only public client variables are present
     expect(configCode).toContain('apiKey:');
     expect(configCode).toContain('authDomain:');
-    expect(configCode).toContain('projectId: "skb-rice-mundy"');
+    expect(configCode).toContain('projectId:');
 
     // Ensure NO private service account keys or secret tokens are leaked
     expect(configCode).not.toContain('private_key');

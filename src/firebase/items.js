@@ -74,7 +74,7 @@ export const seedIfEmpty = async () => {
     ];
 
     initialCategories.forEach(cat => {
-      const docRef = doc(collection(db, "categories"));
+      const docRef = doc(db, "categories", cat.key);
       batch.set(docRef, cat);
     });
     
@@ -118,7 +118,12 @@ export const seedIfEmpty = async () => {
     ];
 
     seedItems.forEach(item => {
-      const docRef = doc(collection(db, "items"));
+      const slug = item.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      if (!slug) return;
+      const docRef = doc(db, "items", slug);
       batch.set(docRef, {
         name: item.name,
         categoryKey: item.categoryKey,
