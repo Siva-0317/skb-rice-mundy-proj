@@ -29,7 +29,6 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
     name,
     mobile,
     balance: numBalance,
-    status: 'active',
     txnCount: numBalance > 0 ? 1 : 0,
     createdAt: serverTimestamp()
   });

@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from "firebase/firestore";
 import { db } from "./config";
+import { getCustomerStatus } from "../utils/customerStatus";
 
 const LOW_STOCK_THRESHOLD = 15;
 
@@ -63,9 +64,11 @@ export const getTodayStats = async () => {
   const todayPurchases = purchSnap.docs.reduce((acc, doc) => acc + (doc.data().totalAmount || 0), 0);
 
   // Overdue Customers
-  const custQ = query(collection(db, "customers"), where("status", "==", "Overdue"));
+  // Fetch all customers with balance > 0, then compute overdue status client-side.
+  // Note: This scales fine up to a few hundred customers; a denormalized counter would be needed at much larger scale.
+  const custQ = query(collection(db, "customers"), where("balance", ">", 0));
   const custSnap = await getDocs(custQ);
-  const overdueCustomers = custSnap.docs.filter(d => (d.data().balance || 0) > 0).length;
+  const overdueCustomers = custSnap.docs.filter(d => getCustomerStatus({ id: d.id, ...d.data() }) === 'overdue').length;
 
   // Low Stock Items (query all items, then filter client side)
   const itemsSnap = await getDocs(collection(db, "items"));

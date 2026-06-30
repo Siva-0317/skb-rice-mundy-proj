@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
+import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
 import AddCustomerModal from '../components/AddCustomerModal';
 
@@ -107,13 +108,20 @@ export default function Customers() {
                       )}
                     </td>
                     <td className="py-3 px-6 text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
-                        customer.status === 'Overdue' 
-                          ? 'bg-debit/10 text-debit border-debit/20' 
-                          : 'bg-credit/10 text-credit border-credit/20'
-                      }`}>
-                        {customer.status === 'Overdue' ? 'Overdue' : 'Active'}
-                      </span>
+                      {(() => {
+                        const status = getCustomerStatus(customer);
+                        const badgeStyle = status === 'overdue'
+                          ? 'bg-debit/10 text-debit border-debit/20'
+                          : status === 'active'
+                          ? 'bg-credit/10 text-credit border-credit/20'
+                          : 'bg-textMuted/10 text-textMuted border-border';
+                        const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : 'Settled';
+                        return (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
+                            {badgeText}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-6 text-sm text-textMuted text-center">{customer.txnCount || 0}</td>
                     <td className="py-3 px-6 text-sm text-textMuted text-center">

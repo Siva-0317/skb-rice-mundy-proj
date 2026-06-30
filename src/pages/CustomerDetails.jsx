@@ -6,6 +6,7 @@ import { db } from '../firebase/config';
 import { getCustomer, getCustomerLedger, recordPayment } from '../firebase/customers';
 import { editLedgerEntry } from '../firebase/ledger';
 import { PAYMENT_MODES } from '../utils/constants';
+import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
 
 export default function CustomerDetails() {
@@ -146,7 +147,23 @@ export default function CustomerDetails() {
       {/* Header Card */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-border flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="font-display text-2xl font-bold text-brownDark mb-1">{customer.name}</h2>
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="font-display text-2xl font-bold text-brownDark">{customer.name}</h2>
+            {(() => {
+              const status = getCustomerStatus(customer);
+              const badgeStyle = status === 'overdue'
+                ? 'bg-debit/10 text-debit border-debit/20'
+                : status === 'active'
+                ? 'bg-credit/10 text-credit border-credit/20'
+                : 'bg-textMuted/10 text-textMuted border-border';
+              const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : 'Settled';
+              return (
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
+                  {badgeText}
+                </span>
+              );
+            })()}
+          </div>
           <p className="text-textMuted">{customer.mobile}</p>
         </div>
         
