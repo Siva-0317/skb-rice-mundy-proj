@@ -20,33 +20,31 @@ export const getSupplierLedger = async (id) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const addSupplier = async ({ name, phone, openingBalance }) => {
-  const numBalance = Number(openingBalance) || 0;
-  
+export const addSupplier = async ({ name, phone, supplyCategories = [], notes = '', categories = '' }) => {
   const supplierRef = doc(collection(db, "suppliers"));
   
   await setDoc(supplierRef, {
     name,
     phone,
-    balance: numBalance,
-    status: 'active',
-    txnCount: numBalance > 0 ? 1 : 0,
+    supplyCategories,
+    categories,
+    notes,
     createdAt: serverTimestamp()
   });
 
-  if (numBalance > 0) {
-    const ledgerRef = doc(collection(db, "suppliers", supplierRef.id, "ledger"));
-    await setDoc(ledgerRef, {
-      type: 'opening',
-      desc: 'Opening balance',
-      debit: 0,
-      credit: numBalance,
-      balanceAfter: numBalance,
-      date: serverTimestamp()
-    });
-  }
-
   return supplierRef.id;
+};
+
+export const updateSupplier = async (id, { name, phone, supplyCategories = [], notes = '', categories = '' }) => {
+  const supplierRef = doc(db, "suppliers", id);
+  await setDoc(supplierRef, {
+    name,
+    phone,
+    supplyCategories,
+    categories,
+    notes,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
 };
 
 export const recordSupplierPayment = async (supplierId, paymentData) => {

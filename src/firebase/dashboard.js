@@ -56,43 +56,70 @@ export const getTodayStats = async () => {
   // Today Sales
   const salesQ = query(collection(db, "sales"), where("date", ">=", todayStart), where("date", "<=", todayEnd));
   const salesSnap = await getDocs(salesQ);
-  const todaySales = salesSnap.docs.reduce((acc, doc) => acc + (doc.data().totalAmount || 0), 0);
+  let todaySales = 0;
+  let todayKgMoved = 0;
+  salesSnap.docs.forEach(doc => {
+    const data = doc.data();
+    todaySales += (data.totalAmount || 0);
+    if (data.items && Array.isArray(data.items)) {
+      data.items.forEach(row => {
+        const bags = Number(row.bags) || 0;
+        const bagKg = Number(row.bagKg || row.kg) || 0;
+        todayKgMoved += bags * bagKg;
+      });
+    }
+  });
+  const todaySalesCount = salesSnap.docs.length;
 
-  // Today Purchases
-  const purchQ = query(collection(db, "purchases"), where("date", ">=", todayStart), where("date", "<=", todayEnd));
-  const purchSnap = await getDocs(purchQ);
-  const todayPurchases = purchSnap.docs.reduce((acc, doc) => acc + (doc.data().totalAmount || 0), 0);
-
-  // Overdue Customers
-  // Fetch all customers with balance > 0, then compute overdue status client-side.
-  // Note: This scales fine up to a few hundred customers; a denormalized counter would be needed at much larger scale.
+  // Overdue Customers & Total Outstanding
   const custQ = query(collection(db, "customers"), where("balance", ">", 0));
   const custSnap = await getDocs(custQ);
-  const overdueCustomers = custSnap.docs.filter(d => getCustomerStatus({ id: d.id, ...d.data() }) === 'overdue').length;
-
-  // Low Stock Items (query all items, then filter client side)
-  const itemsSnap = await getDocs(collection(db, "items"));
-  const lowStockItems = itemsSnap.docs.filter(d => {
+  let totalOutstanding = 0;
+  let overdueAmount = 0;
+  let overdueCustomers = 0;
+  custSnap.docs.forEach(d => {
     const data = d.data();
-    return data.active !== false && data.stock < LOW_STOCK_THRESHOLD;
-  }).length;
+    const bal = Number(data.balance) || 0;
+    totalOutstanding += bal;
+    const status = getCustomerStatus({ id: d.id, ...data });
+    if (status === 'overdue') {
+      overdueCustomers += 1;
+      overdueAmount += bal;
+    }
+  });
+
+  // Low Stock Items & Current Stock
+  const itemsSnap = await getDocs(collection(db, "items"));
+  const activeItems = itemsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(i => i.active !== false);
+
+  let currentStockKg = 0;
+  activeItems.forEach(i => {
+    const stock = Number(i.stock) || 0;
+    const bagKg = Number(i.bagKg || i.kg) || 0;
+    currentStockKg += stock * bagKg;
+  });
+
+  const varietiesCount = activeItems.length;
+  const lowStockItems = activeItems.filter(i => Number(i.stock) < LOW_STOCK_THRESHOLD).length;
 
   return {
     todaySales,
-    todayPurchases,
+    todaySalesCount,
+    todayKgMoved,
+    totalOutstanding,
+    overdueAmount,
     overdueCustomers,
-    lowStockItems
+    currentStockKg,
+    varietiesCount,
+    lowStockItems,
+    items: activeItems
   };
 };
 
 export const getDashboardRecentSales = async (limitCount = 7) => {
   const q = query(collection(db, "sales"), orderBy("date", "desc"), firestoreLimit(limitCount));
-  const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-
-export const getDashboardRecentPurchases = async (limitCount = 5) => {
-  const q = query(collection(db, "purchases"), orderBy("date", "desc"), firestoreLimit(limitCount));
   const snap = await getDocs(q);
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

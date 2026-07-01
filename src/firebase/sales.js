@@ -49,11 +49,47 @@ export const createSale = async ({ customerId, customerName, date, advance, rema
     const currentTxnCount = customerDoc.data().txnCount || 0;
     const newBalance = currentBalance + computedTotal;
 
-    // Read all item docs
-    const itemRefs = enrichedRows.map(r => doc(db, "items", r.itemId));
-    const itemDocs = [];
-    for (let ref of itemRefs) {
-      itemDocs.push(await transaction.get(ref));
+    // Read all item docs (unique)
+    const itemTotalRequested = new Map();
+    enrichedRows.forEach(r => {
+      if (r.itemId) {
+        itemTotalRequested.set(r.itemId, (itemTotalRequested.get(r.itemId) || 0) + (Number(r.bags) || 0));
+      }
+    });
+
+    const uniqueItemIds = Array.from(itemTotalRequested.keys());
+    const itemDocsMap = new Map();
+    for (const itemId of uniqueItemIds) {
+      const itemRef = doc(db, "items", itemId);
+      itemDocsMap.set(itemId, { ref: itemRef, doc: await transaction.get(itemRef) });
+    }
+
+    const failures = [];
+    enrichedRows.forEach((row, i) => {
+      const snapObj = itemDocsMap.get(row.itemId);
+      const snap = snapObj ? snapObj.doc : null;
+      const currentStock = snap && snap.exists() ? (Number(snap.data().stock) || 0) : 0;
+      const totalReq = itemTotalRequested.get(row.itemId) || 0;
+
+      if (totalReq > currentStock) {
+        failures.push({
+          rowIndex: i,
+          itemId: row.itemId,
+          item: row.itemName || (snap && snap.exists() ? snap.data().name : 'Item'),
+          available: currentStock,
+          requested: Number(row.bags)
+        });
+      }
+    });
+
+    if (failures.length > 0) {
+      const err = new Error(`Only ${failures[0].available} bags available in stock`);
+      err.code = 'INSUFFICIENT_STOCK';
+      err.failures = failures;
+      err.item = failures[0].item;
+      err.available = failures[0].available;
+      err.requested = failures[0].requested;
+      throw err;
     }
 
     // 2. WRITES
@@ -89,12 +125,12 @@ export const createSale = async ({ customerId, customerName, date, advance, rema
     });
 
     // Update Items Stock
-    enrichedRows.forEach((row, i) => {
-      const itemDoc = itemDocs[i];
-      if (itemDoc.exists()) {
-        const currentStock = itemDoc.data().stock || 0;
-        transaction.update(itemRefs[i], {
-          stock: currentStock - Number(row.bags)
+    itemDocsMap.forEach(({ ref, doc: snap }, itemId) => {
+      if (snap.exists()) {
+        const totalReq = itemTotalRequested.get(itemId) || 0;
+        const currentStock = Number(snap.data().stock) || 0;
+        transaction.update(ref, {
+          stock: currentStock - totalReq
         });
       }
     });
@@ -180,6 +216,52 @@ export const editSale = async (saleId, updatedData, uid) => {
       itemDocsMap.set(itemId, { ref: itemRef, doc: await transaction.get(itemRef) });
     }
 
+    const oldBagsMap = new Map();
+    if (oldSale.items && Array.isArray(oldSale.items)) {
+      oldSale.items.forEach(r => {
+        if (r.itemId) {
+          oldBagsMap.set(r.itemId, (oldBagsMap.get(r.itemId) || 0) + (Number(r.bags) || 0));
+        }
+      });
+    }
+
+    const newTotalRequested = new Map();
+    enrichedRows.forEach(r => {
+      if (r.itemId) {
+        newTotalRequested.set(r.itemId, (newTotalRequested.get(r.itemId) || 0) + (Number(r.bags) || 0));
+      }
+    });
+
+    const failures = [];
+    enrichedRows.forEach((row, i) => {
+      const snapObj = itemDocsMap.get(row.itemId);
+      const snap = snapObj ? snapObj.doc : null;
+      const currentStock = snap && snap.exists() ? (Number(snap.data().stock) || 0) : 0;
+      const oldBags = oldBagsMap.get(row.itemId) || 0;
+      const effectiveAvailable = currentStock + oldBags;
+      const totalReq = newTotalRequested.get(row.itemId) || 0;
+
+      if (totalReq > effectiveAvailable) {
+        failures.push({
+          rowIndex: i,
+          itemId: row.itemId,
+          item: row.itemName || (snap && snap.exists() ? snap.data().name : 'Item'),
+          available: effectiveAvailable,
+          requested: Number(row.bags)
+        });
+      }
+    });
+
+    if (failures.length > 0) {
+      const err = new Error(`Only ${failures[0].available} bags available in stock`);
+      err.code = 'INSUFFICIENT_STOCK';
+      err.failures = failures;
+      err.item = failures[0].item;
+      err.available = failures[0].available;
+      err.requested = failures[0].requested;
+      throw err;
+    }
+
     const ledgerQuery = query(collection(db, "customers", oldCustomerId, "ledger"), where("refId", "==", saleId));
     const ledgerSnap = await transaction.get(ledgerQuery);
 
@@ -250,4 +332,17 @@ export const editSale = async (saleId, updatedData, uid) => {
 
     return oldSale.billNo;
   });
+};
+
+export const getCustomerSales = async (customerId) => {
+  if (!customerId) return [];
+  const q = query(collection(db, "sales"), where("customerId", "==", customerId));
+  const snap = await getDocs(q);
+  const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  docs.sort((a, b) => {
+    const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date || 0);
+    const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date || 0);
+    return dateB - dateA;
+  });
+  return docs;
 };

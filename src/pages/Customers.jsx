@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
 import AddCustomerModal from '../components/AddCustomerModal';
+import RecordPaymentModal from '../components/RecordPaymentModal';
 
 export default function Customers() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
 
   const fetchCustomers = async () => {
@@ -29,6 +32,15 @@ export default function Customers() {
   useEffect(() => {
     fetchCustomers();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'payment') {
+      setIsPaymentModalOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('action');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleModalSuccess = () => {
     fetchCustomers();
@@ -139,6 +151,13 @@ export default function Customers() {
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         onSuccess={handleModalSuccess} 
+      />
+
+      <RecordPaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onSuccess={handleModalSuccess}
+        customers={customers}
       />
     </div>
   );

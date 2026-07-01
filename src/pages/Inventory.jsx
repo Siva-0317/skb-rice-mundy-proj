@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getCategories, getItems, adjustStock } from '../firebase/items';
-import { Pencil, ChevronDown, ChevronRight, X, AlertTriangle, Package, Boxes, AlertCircle } from 'lucide-react';
+import { Pencil, ChevronDown, ChevronRight, X, AlertTriangle, Package, Boxes, AlertCircle, Plus } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import AddItemModal from '../components/AddItemModal';
 
 const LOW_STOCK_THRESHOLD = 15;
 
@@ -13,6 +14,7 @@ export default function Inventory() {
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [newStock, setNewStock] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,9 +174,17 @@ export default function Inventory() {
       <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
         <div className="p-5 border-b border-border bg-panel/30 flex justify-between items-center">
           <h2 className="font-display text-xl font-semibold text-brownDark">Current Stock</h2>
-          <span className="text-xs font-medium text-textMuted bg-white px-2.5 py-1 rounded-md border border-border">
-            Threshold: &lt; {LOW_STOCK_THRESHOLD} bags
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-textMuted bg-white px-2.5 py-1 rounded-md border border-border">
+              Threshold: &lt; {LOW_STOCK_THRESHOLD} bags
+            </span>
+            <button 
+              onClick={() => setIsAddItemModalOpen(true)}
+              className="flex items-center gap-2 bg-gold text-white px-4 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium text-sm shadow-sm"
+            >
+              <Plus className="w-4 h-4" /> Add Item
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto max-h-[70vh]">
           <table className="w-full text-left border-collapse min-w-[700px]">
@@ -321,6 +331,13 @@ export default function Inventory() {
           </div>
         </div>
       )}
+
+      <AddItemModal
+        isOpen={isAddItemModalOpen}
+        onClose={() => setIsAddItemModalOpen(false)}
+        onSuccess={fetchData}
+        categories={categories}
+      />
     </div>
   );
 }

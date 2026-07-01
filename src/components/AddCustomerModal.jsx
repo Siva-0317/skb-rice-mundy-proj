@@ -50,12 +50,9 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-textDark mb-1">Mobile Number</label>
+              <label className="block text-sm font-medium text-textDark mb-1">MOBILE NUMBER (optional)</label>
               <input
                 type="tel"
-                required
-                pattern="[0-9]{10}"
-                title="10 digit mobile number"
                 value={formData.mobile}
                 onChange={(e) => setFormData({...formData, mobile: e.target.value})}
                 className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"

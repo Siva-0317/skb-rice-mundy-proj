@@ -22,12 +22,13 @@ export const getCustomerLedger = async (id) => {
 
 export const addCustomer = async ({ name, mobile, openingBalance }) => {
   const numBalance = Number(openingBalance) || 0;
+  const cleanMobile = (mobile !== undefined && mobile !== null) ? String(mobile).trim() : '';
   
   const customerRef = doc(collection(db, "customers"));
   
   await setDoc(customerRef, {
     name,
-    mobile,
+    mobile: cleanMobile,
     balance: numBalance,
     txnCount: numBalance > 0 ? 1 : 0,
     createdAt: serverTimestamp()
@@ -52,6 +53,8 @@ export const recordPayment = async (customerId, paymentData) => {
   const amount = typeof paymentData === 'object' && paymentData !== null ? paymentData.amount : paymentData;
   const mode = typeof paymentData === 'object' && paymentData !== null && paymentData.mode ? paymentData.mode : 'Cash';
   const note = typeof paymentData === 'object' && paymentData !== null && paymentData.note ? paymentData.note : '';
+  const linkedBillNo = typeof paymentData === 'object' && paymentData !== null && paymentData.linkedBillNo ? paymentData.linkedBillNo : null;
+  const customDate = typeof paymentData === 'object' && paymentData !== null && paymentData.date ? new Date(paymentData.date) : null;
 
   const numAmount = Number(amount);
   if (numAmount <= 0) throw new Error("Payment amount must be greater than 0");
@@ -71,7 +74,7 @@ export const recordPayment = async (customerId, paymentData) => {
     const currentTxnCount = customerDoc.data().txnCount || 0;
     const newBalance = currentBalance - numAmount;
 
-    transaction.set(newLedgerRef, {
+    const ledgerEntry = {
       type: 'payment',
       desc,
       mode,
@@ -79,12 +82,18 @@ export const recordPayment = async (customerId, paymentData) => {
       debit: 0,
       credit: numAmount,
       balanceAfter: newBalance,
-      date: serverTimestamp()
-    });
+      date: customDate || serverTimestamp(),
+      createdAt: serverTimestamp()
+    };
+    if (linkedBillNo) {
+      ledgerEntry.linkedBillNo = linkedBillNo;
+    }
+
+    transaction.set(newLedgerRef, ledgerEntry);
 
     transaction.update(customerRef, {
       balance: newBalance,
-      lastPayment: serverTimestamp(),
+      lastPayment: customDate || serverTimestamp(),
       txnCount: currentTxnCount + 1
     });
   });

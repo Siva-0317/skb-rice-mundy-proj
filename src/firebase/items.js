@@ -131,7 +131,8 @@ export const seedIfEmpty = async () => {
         rate: item.rate,
         mrp: item.rate,
         stock: 0,
-        active: true
+        active: true,
+        updatedAt: serverTimestamp()
       });
     });
     

@@ -1,92 +1,121 @@
 import { Plus, Trash2 } from 'lucide-react';
 
-export default function InvoiceRowsTable({ rows, categories, items, onAddRow, onRemoveRow, onRowChange }) {
+export default function InvoiceRowsTable({ rows, categories, items, onAddRow, onRemoveRow, onRowChange, onRowBlur, rowErrors = {}, rowWarnings = {} }) {
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto max-h-[60vh]">
-        <table className="w-full text-left border-collapse min-w-[600px]">
+        <table className="w-full text-left border-collapse min-w-[750px]">
           <thead className="sticky top-0 z-10 bg-panel shadow-sm">
             <tr className="text-xs uppercase text-textMuted border-b border-border">
-              <th className="py-3 px-4 font-medium w-[20%]">Category</th>
-              <th className="py-3 px-4 font-medium w-[30%]">Item</th>
-              <th className="py-3 px-4 font-medium w-[12%]">Bags</th>
-              <th className="py-3 px-4 font-medium w-[12%]">Kg/Bag</th>
-              <th className="py-3 px-4 font-medium w-[12%]">Rate (₹)</th>
-              <th className="py-3 px-4 font-medium text-right w-[14%]">Amount</th>
+              <th className="py-3 px-4 font-medium w-[18%]">Category</th>
+              <th className="py-3 px-4 font-medium w-[24%]">Item</th>
+              <th className="py-3 px-4 font-medium w-[10%]">No. of Bags</th>
+              <th className="py-3 px-4 font-medium w-[10%]">Bag wt (kg)</th>
+              <th className="py-3 px-4 font-medium w-[11%]">Total kgs</th>
+              <th className="py-3 px-4 font-medium w-[11%]">Rate (₹)</th>
+              <th className="py-3 px-4 font-medium text-right w-[11%]">Amount</th>
               <th className="py-3 px-4 w-[5%]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((row) => (
-              <tr key={row.id} className="bg-white">
-                <td className="p-2">
-                  <select
-                    value={row.categoryKey}
-                    onChange={(e) => onRowChange(row.id, 'categoryKey', e.target.value)}
-                    className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white min-h-[44px]"
-                  >
-                    <option value="">Category</option>
-                    {categories.map(c => (
-                      <option key={c.key} value={c.key}>{c.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td className="p-2">
-                  <select
-                    value={row.itemId}
-                    onChange={(e) => onRowChange(row.id, 'itemId', e.target.value)}
-                    disabled={!row.categoryKey}
-                    className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white disabled:bg-panel min-h-[44px]"
-                  >
-                    <option value="">Select Item</option>
-                    {items.filter(i => i.categoryKey === row.categoryKey).map(i => (
-                      <option key={i.id} value={i.id}>{i.name} · {i.bagKg}kg</option>
-                    ))}
-                  </select>
-                </td>
-                <td className="p-2">
-                  <input
-                    type="number"
-                    min="1"
-                    value={row.bags}
-                    onChange={(e) => onRowChange(row.id, 'bags', e.target.value)}
-                    placeholder="0"
-                    disabled={!row.itemId}
-                    className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm disabled:bg-panel min-h-[44px]"
-                  />
-                </td>
-                <td className="p-2">
-                  <input
-                    type="number"
-                    value={row.bagKg}
-                    onChange={(e) => onRowChange(row.id, 'bagKg', e.target.value)}
-                    disabled={!row.itemId}
-                    className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm disabled:bg-panel min-h-[44px]"
-                  />
-                </td>
-                <td className="p-2">
-                  <input
-                    type="number"
-                    value={row.rate}
-                    onChange={(e) => onRowChange(row.id, 'rate', e.target.value)}
-                    disabled={!row.itemId}
-                    className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm disabled:bg-panel min-h-[44px]"
-                  />
-                </td>
-                <td className="p-2 text-right font-medium text-textDark text-sm">
-                  {row.amount > 0 ? `₹${row.amount.toLocaleString('en-IN')}` : '-'}
-                </td>
-                <td className="p-2 text-center">
-                  <button
-                    onClick={() => onRemoveRow(row.id)}
-                    disabled={rows.length === 1}
-                    className="p-1.5 text-textMuted hover:text-debit transition-colors disabled:opacity-30"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const filteredItems = row.categoryKey 
+                ? items.filter(i => i.categoryKey === row.categoryKey)
+                : items;
+              const computedKgs = (row.itemId && row.bags && row.bagKg)
+                ? Number(row.bags) * Number(row.bagKg)
+                : 0;
+
+              return (
+                <tr key={row.id} className={`bg-white ${rowErrors[row.id] ? 'bg-red-50/20' : ''}`}>
+                  <td className="p-2 align-top">
+                    <select
+                      value={row.categoryKey}
+                      onChange={(e) => onRowChange(row.id, 'categoryKey', e.target.value)}
+                      className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white min-h-[44px]"
+                    >
+                      <option value="">All categories</option>
+                      {categories.map(c => (
+                        <option key={c.key} value={c.key}>{c.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-2 align-top">
+                    <select
+                      value={row.itemId}
+                      onChange={(e) => onRowChange(row.id, 'itemId', e.target.value)}
+                      disabled={filteredItems.length === 0}
+                      className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white disabled:bg-panel min-h-[44px]"
+                    >
+                      <option value="">Select item...</option>
+                      {filteredItems.map(i => (
+                        <option key={i.id} value={i.id}>{i.name} · {i.bagKg}kg</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-2 align-top">
+                    <input
+                      type="number"
+                      min="1"
+                      value={row.bags}
+                      onChange={(e) => onRowChange(row.id, 'bags', e.target.value)}
+                      onBlur={() => onRowBlur && onRowBlur(row.id)}
+                      placeholder="0"
+                      disabled={!row.itemId}
+                      className={`w-full p-2 rounded-md border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none ${
+                        rowErrors[row.id]
+                          ? 'border-debit text-debit font-medium focus:ring-2 focus:ring-debit'
+                          : rowWarnings[row.id]
+                          ? 'border-amber-500 focus:ring-2 focus:ring-amber-500'
+                          : 'border-border focus:ring-2 focus:ring-gold/50'
+                      }`}
+                    />
+                    {rowErrors[row.id] ? (
+                      <p className="text-xs text-debit font-semibold mt-1 leading-tight">{rowErrors[row.id]}</p>
+                    ) : rowWarnings[row.id] ? (
+                      <p className="text-xs text-amber-600 font-medium mt-1 leading-tight">{rowWarnings[row.id]}</p>
+                    ) : null}
+                  </td>
+                  <td className="p-2 align-top">
+                    <input
+                      type="text"
+                      readOnly
+                      value={row.itemId && row.bagKg ? row.bagKg : '0'}
+                      className="w-full p-2 rounded-md border border-border bg-panel text-textDark text-base sm:text-sm min-h-[44px] cursor-not-allowed select-none"
+                    />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input
+                      type="text"
+                      readOnly
+                      value={computedKgs > 0 ? `${computedKgs} kg` : '0 kg'}
+                      className="w-full p-2 rounded-md border border-border bg-panel text-textDark text-base sm:text-sm min-h-[44px] cursor-not-allowed select-none"
+                    />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input
+                      type="number"
+                      value={row.rate}
+                      onChange={(e) => onRowChange(row.id, 'rate', e.target.value)}
+                      disabled={!row.itemId}
+                      className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm disabled:bg-panel min-h-[44px]"
+                    />
+                  </td>
+                  <td className="p-2 align-top text-right font-medium text-textDark text-sm pt-4">
+                    {row.amount > 0 ? `₹${row.amount.toLocaleString('en-IN')}` : '₹0'}
+                  </td>
+                  <td className="p-2 align-top text-center pt-3">
+                    <button
+                      onClick={() => onRemoveRow(row.id)}
+                      disabled={rows.length === 1}
+                      className="p-1.5 text-textMuted hover:text-debit transition-colors disabled:opacity-30"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -101,3 +130,4 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
     </div>
   );
 }
+

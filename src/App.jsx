@@ -8,11 +8,9 @@ import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import CustomerDetails from './pages/CustomerDetails';
 import Sales from './pages/Sales';
-import Purchase from './pages/Purchase';
 import Inventory from './pages/Inventory';
 import Reports from './pages/Reports';
 import Masters from './pages/Masters';
-import SupplierDetails from './pages/SupplierDetails';
 
 function App() {
   return (
@@ -46,12 +44,6 @@ function App() {
           </ProtectedRoute>
         } />
         
-        <Route path="/purchase" element={
-          <ProtectedRoute>
-            <AppShell title="Purchase"><Purchase /></AppShell>
-          </ProtectedRoute>
-        } />
-        
         <Route path="/inventory" element={
           <ProtectedRoute>
             <AppShell title="Inventory"><Inventory /></AppShell>
@@ -67,12 +59,6 @@ function App() {
         <Route path="/masters" element={
           <ProtectedRoute>
             <AppShell title="Masters"><Masters /></AppShell>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/suppliers/:id" element={
-          <ProtectedRoute>
-            <AppShell title="Supplier Details"><SupplierDetails /></AppShell>
           </ProtectedRoute>
         } />
         
