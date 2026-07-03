@@ -28,7 +28,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
           categoryKey: editingItem.categoryKey || '',
           bagKg: editingItem.bagKg || '',
           rate: editingItem.rate || '',
-          mrp: editingItem.mrp || '',
+          mrp: editingItem.mrp !== undefined ? editingItem.mrp : (editingItem.rate || ''),
           stock: editingItem.stock || ''
         });
       } else {
@@ -143,7 +143,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-textDark mb-1">MRP (₹)</label>
+              <label className="block text-sm font-medium text-textDark mb-1">Selling Price / MRP (₹)</label>
               <input
                 type="number"
                 required

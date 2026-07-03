@@ -4,18 +4,20 @@ import { IndianRupee, Users, AlertTriangle, TrendingUp, Package } from 'lucide-r
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getWeekSales, getTodayStats, getDashboardRecentSales } from '../firebase/dashboard';
 import { useToast } from '../context/ToastContext';
+import NewPurchaseModal from '../components/NewPurchaseModal';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
+  const [isNewPurchaseOpen, setIsNewPurchaseOpen] = useState(false);
   const [weekSales, setWeekSales] = useState([]);
   const [stats, setStats] = useState({
     todaySales: 0,
     todaySalesCount: 0,
-    todayKgMoved: 0,
+    todayBagsMoved: 0,
     totalOutstanding: 0,
     overdueAmount: 0,
     overdueCustomers: 0,
-    currentStockKg: 0,
+    currentStockBags: 0,
     varietiesCount: 0,
     lowStockItems: 0,
     items: []
@@ -24,26 +26,26 @@ export default function Dashboard() {
   
   const { showToast } = useToast();
 
+  const fetchDashboardData = async () => {
+    try {
+      const [weekData, statsData, salesData] = await Promise.all([
+        getWeekSales(),
+        getTodayStats(),
+        getDashboardRecentSales(8)
+      ]);
+
+      setWeekSales(weekData);
+      setStats(statsData);
+      setRecentSales(salesData);
+    } catch (error) {
+      console.error("Dashboard fetch error:", error);
+      showToast("Failed to load dashboard data", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const [weekData, statsData, salesData] = await Promise.all([
-          getWeekSales(),
-          getTodayStats(),
-          getDashboardRecentSales(8)
-        ]);
-
-        setWeekSales(weekData);
-        setStats(statsData);
-        setRecentSales(salesData);
-      } catch (error) {
-        console.error("Dashboard fetch error:", error);
-        showToast("Failed to load dashboard data", "error");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboardData();
   }, []);
 
@@ -125,20 +127,20 @@ export default function Dashboard() {
   const topStockItems = (stats.items || [])
     .map(i => ({
       ...i,
-      kgAmount: Number(i.stock || 0) * Number(i.bagKg || i.kg || 0)
+      bags: Number(i.stock || 0)
     }))
-    .sort((a, b) => b.kgAmount - a.kgAmount)
+    .sort((a, b) => b.bags - a.bags)
     .slice(0, 8);
-  const maxStockKg = topStockItems[0]?.kgAmount || 1;
+  const maxStockBags = topStockItems[0]?.bags || 1;
 
   // Critically Low Stock Item (< 15 bags)
   const lowStockItemsList = (stats.items || [])
     .filter(i => Number(i.stock) < 15)
     .map(i => ({
       ...i,
-      kgAmount: Number(i.stock || 0) * Number(i.bagKg || i.kg || 0)
+      bagsAmount: Number(i.stock || 0)
     }))
-    .sort((a, b) => a.kgAmount - b.kgAmount);
+    .sort((a, b) => a.bagsAmount - b.bagsAmount);
   const criticallyLowItem = lowStockItemsList[0];
 
   return (
@@ -163,7 +165,7 @@ export default function Dashboard() {
           <div>
             <p className="text-sm font-medium text-textMuted mb-1 uppercase tracking-wider text-xs">Today's Sales</p>
             <h3 className="font-display text-2xl font-bold text-brownDark">{formatCurrency(stats.todaySales)}</h3>
-            <p className="text-xs text-textMuted mt-1">{stats.todaySalesCount || 0} sales · {(stats.todayKgMoved || 0).toLocaleString('en-IN')} kg moved</p>
+            <p className="text-xs text-textMuted mt-1">{stats.todaySalesCount || 0} sales · {(stats.todayBagsMoved || 0).toLocaleString('en-IN')} bags moved</p>
           </div>
           <div className="p-3 bg-gold/10 text-gold rounded-xl">
             <TrendingUp className="w-6 h-6" />
@@ -174,7 +176,7 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-border hover:shadow transition-shadow flex justify-between items-start">
           <div>
             <p className="text-sm font-medium text-textMuted mb-1 uppercase tracking-wider text-xs">Current Stock</p>
-            <h3 className="font-display text-2xl font-bold text-brownDark">{(stats.currentStockKg || 0).toLocaleString('en-IN')} kg</h3>
+            <h3 className="font-display text-2xl font-bold text-brownDark">{(stats.currentStockBags || 0).toLocaleString('en-IN')} bags</h3>
             <p className="text-xs text-textMuted mt-1">across {stats.varietiesCount || 0} varieties</p>
           </div>
           <div className="p-3 bg-brownDark/10 text-brownDark rounded-xl">
@@ -246,12 +248,12 @@ export default function Dashboard() {
                 <div key={item.id} className="space-y-1.5">
                   <div className="flex justify-between items-center text-sm">
                     <span className="font-medium text-textDark truncate max-w-[200px]">{item.name}</span>
-                    <span className="font-semibold text-brownDark">{item.kgAmount.toLocaleString('en-IN')} kg</span>
+                    <span className="font-semibold text-brownDark">{item.bags.toLocaleString('en-IN')} bags</span>
                   </div>
                   <div className="w-full h-2 bg-panel rounded-full overflow-hidden border border-border/40">
                     <div 
                       className="h-full bg-gold rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max((item.kgAmount / maxStockKg) * 100, 2)}%` }}
+                      style={{ width: `${Math.max((item.bags / maxStockBags) * 100, 2)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -320,6 +322,12 @@ export default function Dashboard() {
             >
               + Record Payment
             </Link>
+            <button
+              onClick={() => setIsNewPurchaseOpen(true)}
+              className="w-full bg-white border border-brownDark text-gold py-3 px-4 rounded-xl font-medium shadow-sm hover:bg-panel transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              + New Purchase
+            </button>
           </div>
 
           {criticallyLowItem && (
@@ -330,7 +338,7 @@ export default function Dashboard() {
               </div>
               <p className="font-bold text-brownDark text-lg">{criticallyLowItem.name}</p>
               <p className="text-debit font-bold text-sm mt-0.5">
-                {criticallyLowItem.kgAmount.toLocaleString('en-IN')} kg left
+                {criticallyLowItem.bagsAmount.toLocaleString('en-IN')} bags left
               </p>
             </div>
           )}
@@ -338,6 +346,11 @@ export default function Dashboard() {
 
       </div>
 
+      <NewPurchaseModal
+        isOpen={isNewPurchaseOpen}
+        onClose={() => setIsNewPurchaseOpen(false)}
+        onSuccess={fetchDashboardData}
+      />
     </div>
   );
 }

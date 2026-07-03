@@ -14,6 +14,7 @@ const SUPPLY_CATEGORIES = [
 export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierToEdit = null }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
   const [supplyRows, setSupplyRows] = useState([
     { id: Date.now(), categoryKey: '', typicalQtyPerMonth: '' }
@@ -26,6 +27,7 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
     if (supplierToEdit) {
       setName(supplierToEdit.name || '');
       setPhone(supplierToEdit.phone || '');
+      setLocation(supplierToEdit.location || '');
       setNotes(supplierToEdit.notes || '');
       
       if (supplierToEdit.supplyCategories && Array.isArray(supplierToEdit.supplyCategories) && supplierToEdit.supplyCategories.length > 0) {
@@ -44,6 +46,7 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
     } else {
       setName('');
       setPhone('');
+      setLocation('');
       setNotes('');
       setSupplyRows([{ id: Date.now(), categoryKey: '', typicalQtyPerMonth: '' }]);
     }
@@ -97,20 +100,23 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
       const payload = {
         name: name.trim(),
         phone: phone.trim(),
+        location: location.trim(),
         notes: notes.trim(),
         supplyCategories: validRows,
         categories: categoriesStr
       };
 
+      let finalId = null;
       if (supplierToEdit) {
         await updateSupplier(supplierToEdit.id, payload);
+        finalId = supplierToEdit.id;
         showToast("Supplier updated successfully!");
       } else {
-        const newId = await addSupplier(payload);
+        finalId = await addSupplier(payload);
         showToast("Supplier added successfully!");
       }
       
-      onSuccess && onSuccess();
+      onSuccess && onSuccess({ id: finalId, name: payload.name });
       onClose();
     } catch (error) {
       console.error("Error saving supplier:", error);
@@ -156,6 +162,17 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="10 digit mobile number"
+                className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-textDark mb-1">LOCATION (optional)</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. Coimbatore, Salem Market, Anna Nagar Chennai"
                 className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
               />
             </div>

@@ -158,7 +158,7 @@ export default function ItemsList() {
                         <td className="py-3 px-6 text-sm font-medium text-textDark pl-12">{item.name}</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.bagKg} kg</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right font-medium">₹{item.rate}</td>
-                      <td className="py-3 px-6 text-sm text-textMuted text-right">₹{item.mrp}</td>
+                      <td className="py-3 px-6 text-sm text-textMuted text-right">₹{item.mrp !== undefined ? item.mrp : item.rate}</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.stock}</td>
                       <td className="py-3 px-6 text-center">
                         <button 

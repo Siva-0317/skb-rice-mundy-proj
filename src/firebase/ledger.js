@@ -1,4 +1,4 @@
-import { doc, collection, query, orderBy, limit, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, query, orderBy, limit, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 
 export const editLedgerEntry = async (personType, personId, entryId, { amount, mode, note }) => {
@@ -25,7 +25,7 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
       throw new Error("Only payment entries can be edited");
     }
 
-    const recentSnap = await transaction.get(recentQuery);
+    const recentSnap = await getDocs(recentQuery);
     if (!recentSnap.empty && recentSnap.docs[0].id !== entryId) {
       throw new Error("Only the most recent payment can be edited");
     }

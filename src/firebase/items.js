@@ -34,13 +34,19 @@ export const getItems = async () => {
 
 export const addItem = async (data) => {
   const newDocRef = doc(collection(db, "items"));
-  await setDoc(newDocRef, data);
+  const payload = {
+    ...data,
+    rate: Number(data.rate) || 0,
+    mrp: data.mrp !== undefined && data.mrp !== '' ? Number(data.mrp) : (Number(data.rate) || 0),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(newDocRef, payload);
   return newDocRef.id;
 };
 
 export const updateItem = async (itemId, data) => {
   const itemRef = doc(db, "items", itemId);
-  await updateDoc(itemRef, data);
+  await updateDoc(itemRef, { ...data, updatedAt: serverTimestamp() });
 };
 
 export const setItemActive = async (itemId, isActive) => {

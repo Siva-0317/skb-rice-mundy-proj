@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, IndianRupee, Pencil } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCategories, getItems } from '../firebase/items';
-import { createSale, editSale, getNextBillNo, getRecentSales } from '../firebase/sales';
+import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
 import { AuthContext } from '../context/AuthContext';
 import AddCustomerModal from '../components/AddCustomerModal';
@@ -19,6 +19,7 @@ export default function Sales() {
   
   // UI State
   const [loading, setLoading] = useState(true);
+  const [salesLoading, setSalesLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [recentSalesOpen, setRecentSalesOpen] = useState(true);
@@ -26,6 +27,11 @@ export default function Sales() {
   const [editingBillNo, setEditingBillNo] = useState('');
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const { showToast } = useToast();
+
+  const [selectedMonthDate, setSelectedMonthDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
 
   // Form State
   const [customerId, setCustomerId] = useState('');
@@ -38,14 +44,31 @@ export default function Sales() {
   const [rowErrors, setRowErrors] = useState({});
   const [rowWarnings, setRowWarnings] = useState({});
   const [editingOldBagsMap, setEditingOldBagsMap] = useState({});
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('Cash');
+
+
+
+  const fetchMonthSales = async (dateObj = selectedMonthDate) => {
+    try {
+      setSalesLoading(true);
+      const data = await getSalesByMonth(dateObj.getFullYear(), dateObj.getMonth());
+      setRecentSales(data || []);
+    } catch (err) {
+      console.error("Error loading monthly sales:", err);
+    } finally {
+      setSalesLoading(false);
+    }
+  };
 
   const loadData = async () => {
     try {
+      const initDate = new Date();
       const [custData, catData, itemData, recentData, billNo] = await Promise.all([
         getCustomers(),
         getCategories(),
         getItems(),
-        getRecentSales(),
+        getSalesByMonth(initDate.getFullYear(), initDate.getMonth()),
         getNextBillNo()
       ]);
       setCustomers(custData);
@@ -65,8 +88,14 @@ export default function Sales() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      fetchMonthSales(selectedMonthDate);
+    }
+  }, [selectedMonthDate]);
+
   const handleAddRow = () => {
-    setRows([...rows, { id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+    setRows([...rows, { id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
   };
 
   const handleRemoveRow = (id) => {
@@ -86,19 +115,23 @@ export default function Sales() {
       if (row.id === id) {
         const updatedRow = { ...row, [field]: value };
         
-        // If item changes, auto-fill bagKg and rate
+        // If item changes, auto-fill bagKg, rate, mrp
         if (field === 'itemId') {
           const selectedItem = items.find(i => i.id === value);
           if (selectedItem) {
             updatedRow.item = selectedItem;
             updatedRow.bagKg = selectedItem.bagKg;
             updatedRow.rate = selectedItem.rate;
+            updatedRow.mrp = selectedItem.mrp !== undefined ? selectedItem.mrp : selectedItem.rate;
+            updatedRow.priceField = 'mrp';
             // Also reset bags
             updatedRow.bags = '';
           } else {
             updatedRow.item = null;
             updatedRow.bagKg = '';
             updatedRow.rate = '';
+            updatedRow.mrp = '';
+            updatedRow.priceField = 'mrp';
           }
         }
         
@@ -108,6 +141,8 @@ export default function Sales() {
           updatedRow.item = null;
           updatedRow.bagKg = '';
           updatedRow.rate = '';
+          updatedRow.mrp = '';
+          updatedRow.priceField = 'mrp';
           updatedRow.bags = '';
         }
 
@@ -168,7 +203,8 @@ export default function Sales() {
 
   // Calculations
   const calculatedRows = rows.map(row => {
-    const amount = (Number(row.bags) || 0) * (Number(row.rate) || 0);
+    const unitPrice = row.priceField === 'rate' ? Number(row.rate || 0) : Number(row.mrp !== undefined && row.mrp !== '' ? row.mrp : (row.rate || 0));
+    const amount = (Number(row.bags) || 0) * unitPrice;
     return { ...row, amount };
   });
 
@@ -199,7 +235,7 @@ export default function Sales() {
         if (item.itemId) {
           oldBagsMap[item.itemId] = (oldBagsMap[item.itemId] || 0) + (Number(item.bags) || 0);
         }
-        const masterItem = items.find(i => i.id === item.itemId) || { id: item.itemId, name: item.item, bagKg: item.bagKg, rate: item.rate };
+        const masterItem = items.find(i => i.id === item.itemId) || { id: item.itemId, name: item.item, bagKg: item.bagKg, rate: item.rate, mrp: item.mrp };
         return {
           id: Date.now() + idx,
           categoryKey: item.cat || masterItem.categoryKey || '',
@@ -207,15 +243,20 @@ export default function Sales() {
           item: masterItem,
           bags: String(item.bags || ''),
           bagKg: String(item.bagKg || ''),
-          rate: String(item.rate || '')
+          rate: String(item.rate || ''),
+          mrp: String(item.mrp !== undefined ? item.mrp : (item.rate || '')),
+          priceField: item.priceField || 'mrp',
+          amount: item.amount
         };
       });
       setRows(formRows);
     } else {
-      setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+      setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
     }
 
     setEditingOldBagsMap(oldBagsMap);
+    setPaymentAmount('');
+    setPaymentMode('Cash');
     setRowErrors({});
     setRowWarnings({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -228,8 +269,10 @@ export default function Sales() {
     setDate(new Date().toISOString().split('T')[0]);
     setAdvance('');
     setRemarks('');
-    setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+    setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
     setEditingOldBagsMap({});
+    setPaymentAmount('');
+    setPaymentMode('Cash');
     setRowErrors({});
     setRowWarnings({});
   };
@@ -258,25 +301,61 @@ export default function Sales() {
           cat: r.categoryKey,
           bags: Number(r.bags),
           bagKg: Number(r.bagKg),
-          rate: Number(r.rate)
+          rate: Number(r.rate),
+          mrp: Number(r.mrp !== undefined && r.mrp !== '' ? r.mrp : r.rate),
+          priceField: r.priceField || 'mrp',
+          amount: Number(r.amount)
         }));
 
       if (editingSaleId) {
-        await editSale(editingSaleId, {
+        // Capture the current saleId and monthDate before any state changes
+        const saleIdToEdit = editingSaleId;
+        const monthDateSnapshot = selectedMonthDate;
+        const billNoFallback = editingBillNo;
+
+        const result = await editSale(saleIdToEdit, {
           customerId,
-          customerName: selectedCustomer.name,
+          customerName: selectedCustomer?.name || '',
           date,
           advance: numAdvance,
           remarks,
-          rows: payloadRows
+          rows: payloadRows,
+          paymentAmount: Number(paymentAmount) || 0,
+          paymentMode
         }, user?.uid);
 
-        showToast(`Bill ${editingBillNo} updated`, "success");
-        handleCancelEdit();
+        // result is { billNo } — extract as string, never access .path on it
+        const updatedBillNo = (result && typeof result === 'object' && result.billNo)
+          ? String(result.billNo)
+          : String(billNoFallback || '');
+
+        // Fetch refreshed data BEFORE resetting form state
+        const [recentData, nextBill] = await Promise.all([
+          getSalesByMonth(monthDateSnapshot.getFullYear(), monthDateSnapshot.getMonth()),
+          getNextBillNo()
+        ]);
+
+        // Now batch all state resets together
+        showToast(`Bill ${updatedBillNo} updated`, 'success');
+        setEditingSaleId(null);
+        setEditingBillNo('');
+        setCustomerId('');
+        setDate(new Date().toISOString().split('T')[0]);
+        setAdvance('');
+        setRemarks('');
+        setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
+        setEditingOldBagsMap({});
+        setPaymentAmount('');
+        setPaymentMode('Cash');
+        setRowErrors({});
+        setRowWarnings({});
+        setRecentSales(recentData || []);
+        setNextBillNo(nextBill);
+
       } else {
         const billNo = await createSale({
           customerId,
-          customerName: selectedCustomer.name,
+          customerName: selectedCustomer?.name || '',
           date,
           advance: numAdvance,
           remarks,
@@ -290,13 +369,18 @@ export default function Sales() {
         setDate(new Date().toISOString().split('T')[0]);
         setAdvance('');
         setRemarks('');
-        setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '' }]);
+        setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
         setRowErrors({});
         setRowWarnings({});
         setEditingOldBagsMap({});
+
+        const [recentData, nextBill] = await Promise.all([
+          getSalesByMonth(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth()),
+          getNextBillNo()
+        ]);
+        setRecentSales(recentData || []);
+        setNextBillNo(nextBill);
       }
-      
-      await loadData();
     } catch (error) {
       console.error("Sale error:", error);
       if (error.code === 'INSUFFICIENT_STOCK' && error.failures) {
@@ -415,7 +499,7 @@ export default function Sales() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-textDark mb-1">Advance Received (₹)</label>
+                  <label className="block text-sm font-medium text-textDark mb-1">AMOUNT PAID NOW (₹)</label>
                   <input
                     type="number"
                     min="0"
@@ -424,6 +508,9 @@ export default function Sales() {
                     placeholder="0"
                     className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
                   />
+                  <p className="text-xs text-textMuted mt-1">
+                    Enter the amount the customer is paying today. If equal to or greater than the bill total, the bill is fully settled. Any excess is auto-applied to their outstanding balance.
+                  </p>
                 </div>
               </div>
 
@@ -433,7 +520,7 @@ export default function Sales() {
                   <span>₹{totalItemsAmount.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between items-center mb-4 text-sm text-textMuted">
-                  <span>Advance</span>
+                  <span>Paid Now</span>
                   <span className="text-credit">- ₹{numAdvance.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between items-center pt-3 border-t border-border/60">
@@ -445,6 +532,52 @@ export default function Sales() {
                 </div>
               </div>
             </div>
+
+            {editingSaleId && (
+              <div className="pt-6 border-t border-border space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <h3 className="font-display font-semibold text-base text-brownDark">
+                    Record Payment Against This Bill (optional)
+                  </h3>
+                  <div className="font-bold text-debit text-base">
+                    Due: ₹{finalTotal.toLocaleString('en-IN')}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-textDark mb-1">Amount Now Paid (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
+                    />
+                    <p className="text-xs text-textMuted mt-1">
+                      Leave blank if no payment is being collected with this edit.
+                    </p>
+                  </div>
+                  {Number(paymentAmount) > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-textDark mb-1">Mode <span className="text-debit">*</span></label>
+                      <select
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-white focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Cheque">Cheque</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end items-center gap-3 pt-4">
               {editingSaleId && (
@@ -469,64 +602,195 @@ export default function Sales() {
         </div>
       </div>
 
-      {/* RECENT SALES */}
+      {/* RECENT SALES — Card Layout */}
       <div className="w-full">
-        <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
-          <button 
-            onClick={() => setRecentSalesOpen(!recentSalesOpen)}
-            className="w-full p-5 border-b border-border flex justify-between items-center bg-panel/30 hover:bg-panel/50 transition-colors"
-          >
-            <h2 className="font-display text-lg font-semibold text-brownDark">Recent Sales</h2>
-            {recentSalesOpen ? <ChevronDown className="w-5 h-5 text-textMuted" /> : <ChevronRight className="w-5 h-5 text-textMuted" />}
-          </button>
-          
-          {recentSalesOpen && (
-            <div className="divide-y divide-border overflow-y-auto max-h-[600px]">
-              {recentSales.length === 0 ? (
-                <div className="p-8 text-center text-sm text-textMuted">No recent sales.</div>
-              ) : (
-                recentSales.map(sale => (
-                  <div key={sale.id} className="p-4 sm:p-5 hover:bg-panel/20 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-textDark text-base">{sale.customerName}</span>
-                        <span className="text-xs font-medium text-textMuted bg-panel px-2.5 py-0.5 rounded-full border border-border">
-                          {sale.billNo}
-                        </span>
-                      </div>
-                      <div className="text-xs text-textMuted flex items-center gap-2">
-                        <span>{formatDate(sale.date)}</span>
-                        <span>•</span>
-                        <span className="truncate max-w-lg" title={sale.items?.map(i => i.item).join(', ')}>
-                          {sale.items?.map(i => i.item).join(', ')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-border/50">
-                      <div className="text-left sm:text-right">
-                        <div className="text-xs text-textMuted mb-0.5">
-                          {sale.items?.reduce((sum, i) => sum + Number(i.bags || 0), 0)} bags
-                        </div>
-                        <div className="font-bold text-textDark text-base">
-                          ₹{Number(sale.totalAmount || 0).toLocaleString('en-IN')}
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => handleEditClick(sale)} 
-                        className="p-2 text-textMuted hover:text-gold transition-colors rounded-lg hover:bg-panel border border-transparent hover:border-border inline-flex items-center justify-center gap-1.5 text-xs font-medium"
-                        title="Edit Sale"
-                      >
-                        <Pencil className="w-4 h-4" />
-                        <span>Edit</span>
-                      </button>
-                    </div>
+        {(() => {
+          const fullMonthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const CATEGORY_LABELS = { raw: 'Raw Rice', boiled: 'Boiled Rice', steam: 'Half Boiled Rice', basmathi: 'Basmathi', seeraga: 'Seeraga Samba' };
+          const curYear = selectedMonthDate.getFullYear();
+          const curMonthIdx = selectedMonthDate.getMonth();
+          const prevDate = new Date(curYear, curMonthIdx - 1, 1);
+          const nextDate = new Date(curYear, curMonthIdx + 1, 1);
+          const now = new Date();
+          const isCurrentOrFutureMonth = (curYear > now.getFullYear()) ||
+            (curYear === now.getFullYear() && curMonthIdx >= now.getMonth());
+
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+              {/* Section Header */}
+              <button
+                onClick={() => setRecentSalesOpen(!recentSalesOpen)}
+                className="w-full p-5 border-b border-border flex justify-between items-center bg-panel/30 hover:bg-panel/50 transition-colors"
+              >
+                <h2 className="font-display text-lg font-semibold text-brownDark">Recent Sales</h2>
+                {recentSalesOpen ? <ChevronDown className="w-5 h-5 text-textMuted" /> : <ChevronRight className="w-5 h-5 text-textMuted" />}
+              </button>
+
+              {recentSalesOpen && (
+                <div>
+                  {/* Monthly Toggle */}
+                  <div className="flex items-center justify-between px-5 py-3.5 bg-panel/20 border-b border-border">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthDate(prevDate)}
+                      className="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-white border border-border hover:bg-gold/10 text-textDark transition-colors"
+                    >
+                      ← {fullMonthNames[prevDate.getMonth()]}
+                    </button>
+                    <span className="font-display font-semibold text-sm sm:text-base text-brownDark">
+                      {fullMonthNames[curMonthIdx]} {curYear}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthDate(nextDate)}
+                      disabled={isCurrentOrFutureMonth}
+                      className="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium bg-white border border-border hover:bg-gold/10 text-textDark disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    >
+                      {fullMonthNames[nextDate.getMonth()]} →
+                    </button>
                   </div>
-                ))
+
+                  {/* Column Headers — shown once above the cards */}
+                  {!salesLoading && recentSales.length > 0 && (
+                    <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-[10px] uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
+                      <span>Category</span>
+                      <span>Item</span>
+                      <span className="text-right">Bags</span>
+                      <span className="text-right">MRP (₹/bag)</span>
+                      <span className="text-right">Amount (₹)</span>
+                    </div>
+                  )}
+
+                  {/* Cards List */}
+                  <div className="divide-y divide-border/60 overflow-y-auto max-h-[700px]">
+                    {salesLoading ? (
+                      /* Loading skeleton */
+                      <div className="p-5 space-y-3">
+                        {[1, 2, 3].map(n => (
+                          <div key={n} className="animate-pulse rounded-xl border border-border p-4 space-y-3">
+                            <div className="flex justify-between">
+                              <div className="h-4 bg-panel rounded w-32" />
+                              <div className="h-4 bg-panel rounded w-24" />
+                              <div className="h-4 bg-panel rounded w-20" />
+                            </div>
+                            <div className="h-3 bg-panel/70 rounded w-full" />
+                            <div className="h-3 bg-panel/70 rounded w-3/4" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : recentSales.length === 0 ? (
+                      <div className="p-10 text-center text-sm text-textMuted">
+                        No sales in {fullMonthNames[curMonthIdx]} {curYear}.
+                      </div>
+                    ) : (
+                      <div className="p-4 space-y-3">
+                        {recentSales.map(sale => {
+                          const saleItems = sale.items && Array.isArray(sale.items) ? sale.items : [];
+                          const itemsTotal = saleItems.length > 0
+                            ? saleItems.reduce((sum, i) => sum + (Number(i.amount) || (Number(i.bags || 0) * Number(i.mrp ?? i.rate ?? 0))), 0)
+                            : Number(sale.totalAmount || 0);
+                          const adv = Number(sale.advance || 0);
+                          const due = Math.max(0, itemsTotal - adv);
+                          const paymentMode = sale.paymentMode || null;
+
+                          return (
+                            <div
+                              key={sale.id}
+                              className="rounded-xl border border-border bg-white shadow-sm hover:shadow-md hover:border-gold/30 transition-all duration-150"
+                            >
+                              {/* ── TOP LINE: Customer | Bill Pill | Total ── */}
+                              <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5 border-b border-border/50">
+                                <span className="font-bold text-textDark text-sm truncate max-w-[35%]">
+                                  {sale.customerName}
+                                </span>
+                                <span className="text-[11px] font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
+                                  {sale.billNo}
+                                </span>
+                                <span className="font-bold text-textDark text-sm shrink-0">
+                                  ₹{itemsTotal.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+
+                              {/* ── MIDDLE: Item rows table ── */}
+                              <div className="px-4 py-2 space-y-0.5">
+                                {saleItems.length === 0 ? (
+                                  <p className="text-xs text-textMuted italic py-1">No item details recorded.</p>
+                                ) : (
+                                  saleItems.map((item, idx) => {
+                                    const unitMrp = Number(item.mrp ?? item.rate ?? 0);
+                                    const lineAmt = Number(item.amount) || (Number(item.bags || 0) * unitMrp);
+                                    const catLabel = CATEGORY_LABELS[item.cat || item.categoryKey] || item.cat || item.categoryKey || '—';
+                                    const itemLabel = item.item || item.itemName || item.name || '—';
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 items-center py-1 text-xs"
+                                      >
+                                        <span className="text-textMuted truncate">{catLabel}</span>
+                                        <span className="font-medium text-textDark truncate">{itemLabel}</span>
+                                        <span className="text-right text-textDark tabular-nums">{Number(item.bags || 0).toLocaleString('en-IN')}</span>
+                                        <span className="text-right text-textMuted tabular-nums">₹{unitMrp.toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
+                                        <span className="text-right font-semibold text-textDark tabular-nums">₹{lineAmt.toLocaleString('en-IN')}</span>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+
+                              {/* ── BOTTOM LINE: Date/Remarks | Payment Info | Edit ── */}
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 border-t border-border/50 bg-panel/20 rounded-b-xl">
+                                {/* Left: Date + Remarks */}
+                                <div className="text-xs text-textMuted space-y-0.5 min-w-0">
+                                  <div className="font-medium text-textDark">{formatDate(sale.date)}</div>
+                                  {sale.remarks && (
+                                    <div className="truncate max-w-[200px] italic">{sale.remarks}</div>
+                                  )}
+                                </div>
+
+                                {/* Center: Payment pills */}
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                  <span className="font-semibold text-credit bg-green-50 border border-green-200/70 px-2 py-0.5 rounded-full">
+                                    Paid: ₹{adv.toLocaleString('en-IN')}
+                                  </span>
+                                  {due > 0 ? (
+                                    <span className="font-semibold text-debit bg-red-50 border border-red-200/70 px-2 py-0.5 rounded-full">
+                                      Due: ₹{due.toLocaleString('en-IN')}
+                                    </span>
+                                  ) : (
+                                    <span className="font-semibold text-credit bg-green-100 border border-green-300/70 px-2 py-0.5 rounded-full">
+                                      Fully Paid
+                                    </span>
+                                  )}
+                                  {paymentMode && (
+                                    <span className="text-textMuted bg-panel border border-border px-2 py-0.5 rounded-full">
+                                      {paymentMode}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Right: Edit button */}
+                                <button
+                                  onClick={() => handleEditClick(sale)}
+                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/50 hover:bg-gold/5 rounded-lg transition-all"
+                                  title="Edit Sale"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  Edit
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
+
 
       <AddCustomerModal 
         isOpen={isAddCustomerOpen}

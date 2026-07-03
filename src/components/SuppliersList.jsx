@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, Edit2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { getSuppliers } from '../firebase/suppliers';
 import { useToast } from '../context/ToastContext';
 import AddSupplierModal from './AddSupplierModal';
@@ -54,12 +55,13 @@ export default function SuppliersList() {
     const q = searchQuery.toLowerCase();
     const nameMatch = s.name && s.name.toLowerCase().includes(q);
     const phoneMatch = s.phone && String(s.phone).includes(q);
+    const locationMatch = s.location && s.location.toLowerCase().includes(q);
     const notesMatch = s.notes && s.notes.toLowerCase().includes(q);
     const catMatch = s.categories && s.categories.toLowerCase().includes(q);
     const supplyCatMatch = s.supplyCategories && s.supplyCategories.some(sc => 
       (CATEGORY_LABELS[sc.categoryKey] || sc.categoryKey).toLowerCase().includes(q)
     );
-    return nameMatch || phoneMatch || notesMatch || catMatch || supplyCatMatch;
+    return nameMatch || phoneMatch || locationMatch || notesMatch || catMatch || supplyCatMatch;
   });
 
   return (
@@ -69,7 +71,7 @@ export default function SuppliersList() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textMuted" />
           <input 
             type="text" 
-            placeholder="Search by name, phone, or categories..." 
+            placeholder="Search by name, phone, location..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-white border border-border rounded-lg pl-10 pr-4 py-2 text-base sm:text-sm text-textDark focus:outline-none focus:ring-2 focus:ring-gold/50 shadow-sm min-h-[44px]"
@@ -90,21 +92,22 @@ export default function SuppliersList() {
           <table className="w-full text-left border-collapse min-w-[750px]">
             <thead className="sticky top-0 z-10 bg-panel shadow-sm">
               <tr className="uppercase text-xs text-textMuted border-b border-border">
-                <th className="py-3.5 px-6 font-medium w-[22%]">Name</th>
-                <th className="py-3.5 px-6 font-medium w-[18%]">Phone</th>
-                <th className="py-3.5 px-6 font-medium w-[28%]">Supplies</th>
-                <th className="py-3.5 px-6 font-medium w-[24%]">Notes</th>
-                <th className="py-3.5 px-6 font-medium text-center w-[8%]">Actions</th>
+                <th className="py-3.5 px-6 font-medium">Name</th>
+                <th className="py-3.5 px-6 font-medium">Phone</th>
+                <th className="py-3.5 px-6 font-medium">Location</th>
+                <th className="py-3.5 px-6 font-medium">Supplies</th>
+                <th className="py-3.5 px-6 font-medium">Notes</th>
+                <th className="py-3.5 px-6 font-medium text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-textMuted text-sm">Loading suppliers...</td>
+                  <td colSpan="6" className="py-8 text-center text-textMuted text-sm">Loading suppliers...</td>
                 </tr>
               ) : filteredSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-textMuted text-sm">No suppliers found.</td>
+                  <td colSpan="6" className="py-8 text-center text-textMuted text-sm">No suppliers found.</td>
                 </tr>
               ) : (
                 filteredSuppliers.map(supplier => {
@@ -116,8 +119,13 @@ export default function SuppliersList() {
                       key={supplier.id} 
                       className="hover:bg-panel/50 transition-colors"
                     >
-                      <td className="py-3.5 px-6 text-sm font-medium text-textDark">{supplier.name || '-'}</td>
+                      <td className="py-3.5 px-6 text-sm font-medium text-textDark">
+                        <Link to={`/suppliers/${supplier.id}`} className="hover:text-gold transition-colors font-semibold underline-offset-2 hover:underline">
+                          {supplier.name || '-'}
+                        </Link>
+                      </td>
                       <td className="py-3.5 px-6 text-sm text-textMuted">{supplier.phone || '-'}</td>
+                      <td className="py-3.5 px-6 text-sm text-textMuted">{supplier.location || '—'}</td>
                       <td className="py-3.5 px-6 text-sm text-textDark">
                         {hasSupplyCats ? (
                           <div className="flex flex-wrap gap-1.5">

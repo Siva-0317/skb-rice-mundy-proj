@@ -13,7 +13,8 @@ import {
   Wheat,
   Menu,
   X,
-  AlertCircle
+  AlertCircle,
+  ShoppingBag
 } from 'lucide-react';
 import { signOutUser } from '../firebase/auth';
 import { AuthContext } from '../context/AuthContext';
@@ -25,6 +26,7 @@ const NAV_LINKS = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Customers', path: '/customers', icon: Users },
   { name: 'Sales', path: '/sales', icon: LineChart },
+  { name: 'Purchase', path: '/purchase', icon: ShoppingBag },
   { name: 'Inventory', path: '/inventory', icon: Boxes },
   { name: 'Reports', path: '/reports', icon: BarChart2 },
   { name: 'Masters', path: '/masters', icon: Star },

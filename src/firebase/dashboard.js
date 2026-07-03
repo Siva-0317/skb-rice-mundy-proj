@@ -57,15 +57,19 @@ export const getTodayStats = async () => {
   const salesQ = query(collection(db, "sales"), where("date", ">=", todayStart), where("date", "<=", todayEnd));
   const salesSnap = await getDocs(salesQ);
   let todaySales = 0;
-  let todayKgMoved = 0;
+  let todayBagsMoved = 0;
   salesSnap.docs.forEach(doc => {
     const data = doc.data();
     todaySales += (data.totalAmount || 0);
     if (data.items && Array.isArray(data.items)) {
       data.items.forEach(row => {
         const bags = Number(row.bags) || 0;
-        const bagKg = Number(row.bagKg || row.kg) || 0;
-        todayKgMoved += bags * bagKg;
+        todayBagsMoved += bags;
+      });
+    } else if (data.rows && Array.isArray(data.rows)) {
+      data.rows.forEach(row => {
+        const bags = Number(row.bags || row.qty) || 0;
+        todayBagsMoved += bags;
       });
     }
   });
@@ -94,11 +98,10 @@ export const getTodayStats = async () => {
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(i => i.active !== false);
 
-  let currentStockKg = 0;
+  let currentStockBags = 0;
   activeItems.forEach(i => {
     const stock = Number(i.stock) || 0;
-    const bagKg = Number(i.bagKg || i.kg) || 0;
-    currentStockKg += stock * bagKg;
+    currentStockBags += stock;
   });
 
   const varietiesCount = activeItems.length;
@@ -107,11 +110,11 @@ export const getTodayStats = async () => {
   return {
     todaySales,
     todaySalesCount,
-    todayKgMoved,
+    todayBagsMoved,
     totalOutstanding,
     overdueAmount,
     overdueCustomers,
-    currentStockKg,
+    currentStockBags,
     varietiesCount,
     lowStockItems,
     items: activeItems
@@ -122,4 +125,20 @@ export const getDashboardRecentSales = async (limitCount = 7) => {
   const q = query(collection(db, "sales"), orderBy("date", "desc"), firestoreLimit(limitCount));
   const snap = await getDocs(q);
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getStockByVariety = async (limitCount = 8) => {
+  const itemsSnap = await getDocs(collection(db, "items"));
+  const activeItems = itemsSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(i => i.active !== false);
+
+  return activeItems
+    .map(i => ({
+      id: i.id,
+      name: i.name || '-',
+      bags: Number(i.stock || 0)
+    }))
+    .sort((a, b) => b.bags - a.bags)
+    .slice(0, limitCount);
 };
