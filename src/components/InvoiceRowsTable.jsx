@@ -7,14 +7,13 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
         <table className="w-full text-left border-collapse min-w-[750px]">
           <thead className="sticky top-0 z-10 bg-panel shadow-sm">
             <tr className="text-xs uppercase text-textMuted border-b border-border">
-              <th className="py-3 px-3 font-medium w-[15%]">Category</th>
-              <th className="py-3 px-3 font-medium w-[20%]">Item</th>
-              <th className="py-3 px-3 font-medium w-[8%]">Bags</th>
-              <th className="py-3 px-3 font-medium w-[8%]">Bag wt</th>
-              <th className="py-3 px-3 font-medium w-[9%]">Total kgs</th>
-              <th className="py-3 px-3 font-medium w-[13%]">Rate (₹)</th>
-              <th className="py-3 px-3 font-medium w-[13%]">MRP (₹)</th>
-              <th className="py-3 px-3 font-medium text-right w-[10%]">Amount</th>
+              <th className="py-3 px-3 font-medium w-[18%]">Category</th>
+              <th className="py-3 px-3 font-medium w-[24%]">Item</th>
+              <th className="py-3 px-3 font-medium w-[9%]">Bags</th>
+              <th className="py-3 px-3 font-medium w-[9%]">Bag wt</th>
+              <th className="py-3 px-3 font-medium w-[10%]">Total kgs</th>
+              <th className="py-3 px-3 font-medium w-[14%]">MRP</th>
+              <th className="py-3 px-3 font-medium text-right w-[12%]">Amount</th>
               <th className="py-3 px-3 w-[4%]"></th>
             </tr>
           </thead>
@@ -94,48 +93,15 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
                     />
                   </td>
                   <td className="p-2 align-top">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name={`price-${row.id}`}
-                        checked={row.priceField === 'rate'}
-                        onChange={() => onRowChange(row.id, 'priceField', 'rate')}
-                        disabled={!row.itemId}
-                        className="text-gold focus:ring-gold cursor-pointer"
-                        title="Use Rate for billing"
-                      />
-                      <input
-                        type="number"
-                        value={row.rate}
-                        onChange={(e) => onRowChange(row.id, 'rate', e.target.value)}
-                        onFocus={() => onRowChange(row.id, 'priceField', 'rate')}
-                        disabled={!row.itemId}
-                        placeholder="Rate"
-                        className={`w-full p-2 rounded-md border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none ${row.priceField === 'rate' ? 'border-gold ring-1 ring-gold bg-gold/5 font-semibold' : 'border-border'}`}
-                      />
-                    </div>
-                  </td>
-                  <td className="p-2 align-top">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name={`price-${row.id}`}
-                        checked={row.priceField !== 'rate'}
-                        onChange={() => onRowChange(row.id, 'priceField', 'mrp')}
-                        disabled={!row.itemId}
-                        className="text-gold focus:ring-gold cursor-pointer"
-                        title="Use MRP for billing"
-                      />
-                      <input
-                        type="number"
-                        value={row.mrp !== undefined ? row.mrp : row.rate}
-                        onChange={(e) => onRowChange(row.id, 'mrp', e.target.value)}
-                        onFocus={() => onRowChange(row.id, 'priceField', 'mrp')}
-                        disabled={!row.itemId}
-                        placeholder="MRP"
-                        className={`w-full p-2 rounded-md border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none ${row.priceField !== 'rate' ? 'border-gold ring-1 ring-gold bg-gold/5 font-semibold' : 'border-border'}`}
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.mrp !== undefined && row.mrp !== null ? row.mrp : (row.rate || '')}
+                      onChange={(e) => onRowChange(row.id, 'mrp', e.target.value)}
+                      disabled={!row.itemId}
+                      placeholder="MRP"
+                      className="w-full p-2 rounded-md border border-border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none focus:ring-2 focus:ring-gold/50 font-semibold"
+                    />
                   </td>
                   <td className="p-2 align-top text-right font-medium text-textDark text-sm pt-4">
                     {row.amount > 0 ? `₹${row.amount.toLocaleString('en-IN')}` : '₹0'}

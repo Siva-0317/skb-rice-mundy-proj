@@ -35,7 +35,7 @@ export const createSale = async ({ customerId, customerName, date, advance, rema
   
   // Calculate total before transaction
   const enrichedRows = rows.map(r => {
-    const unitPrice = r.priceField === 'mrp' ? Number((r.mrp ?? r.rate) || 0) : Number(r.rate || 0);
+    const unitPrice = Number(r.mrp !== undefined && r.mrp !== null ? r.mrp : (r.rate || 0));
     const amount = r.amount !== undefined ? Number(r.amount) : Number(r.bags) * unitPrice;
     saleTotal += amount;
     return { ...r, amount };
@@ -184,7 +184,7 @@ export const editSale = async (saleId, updatedData, uid) => {
   let newSaleTotal = 0;
   
   const enrichedRows = rows.map(r => {
-    const unitPrice = r.priceField === 'mrp' ? Number((r.mrp ?? r.rate) || 0) : Number(r.rate || 0);
+    const unitPrice = Number(r.mrp !== undefined && r.mrp !== null ? r.mrp : (r.rate || 0));
     const amount = r.amount !== undefined ? Number(r.amount) : Number(r.bags) * unitPrice;
     newSaleTotal += amount;
     return { ...r, amount };

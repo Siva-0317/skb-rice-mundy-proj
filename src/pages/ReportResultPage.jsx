@@ -152,11 +152,11 @@ export default function ReportResultPage() {
       });
       csvContent += `Grand Total,${reportData.summary?.bills || 0},${reportData.summary?.bags || 0},${reportData.summary?.kgs || 0},${reportData.summary?.total || 0}\n`;
     } else if (reportType === "total-inventory-data") {
-      csvContent += "Item,Category,Bag Size,Stock (Bags),Stock (Kg),Rate (Rs),MRP (Rs),Stock Value (Rs)\n";
+      csvContent += "Item,Category,Bag Size,Stock (Bags),Stock (Kg),MRP (Rs),Stock Value (Rs)\n";
       reportData.rows.forEach(r => {
-        csvContent += `"${(r.name || '').replace(/"/g, '""')}","${(r.category || '').replace(/"/g, '""')}","${r.bagSize || ''}",${r.stockBags || 0},${r.stockKg || 0},${r.rate || 0},${r.mrp || 0},${r.stockValue || 0}\n`;
+        csvContent += `"${(r.name || '').replace(/"/g, '""')}","${(r.category || '').replace(/"/g, '""')}","${r.bagSize || ''}",${r.stockBags || 0},${r.stockKg || 0},${r.mrp || 0},${r.stockValue || 0}\n`;
       });
-      csvContent += `Total Stock Value,,,${reportData.summary?.stockBags || 0},${reportData.summary?.stockKg || 0},,,${reportData.summary?.stockValue || 0}\n`;
+      csvContent += `Total Stock Value,,,${reportData.summary?.stockBags || 0},${reportData.summary?.stockKg || 0},,${reportData.summary?.stockValue || 0}\n`;
     } else if (reportType === "total-sales-date-wise") {
       csvContent += "Date,No. of Bills,Total Bags,Total Kgs,Total (Rs)\n";
       reportData.rows.forEach(r => {
@@ -194,7 +194,7 @@ export default function ReportResultPage() {
       });
       csvContent += `Grand Total,,${reportData.summary?.bills || 0},${reportData.summary?.bagsBought || 0},${reportData.summary?.totalKgs || 0},,${reportData.summary?.totalCost || 0}\n`;
     } else if (reportType === "purchase-category-stock") {
-      csvContent += "Category,No. of Items,Total Bags in Stock,Total Kgs,Avg Rate / MRP (Rs/bag),Stock Value (Rs)\n";
+      csvContent += "Category,No. of Items,Total Bags in Stock,Total Kgs,Avg MRP (Rs/bag),Stock Value (Rs)\n";
       reportData.rows.forEach(r => {
         csvContent += `"${(r.category || '').replace(/"/g, '""')}",${r.itemCount || 0},${r.totalBags || 0},${r.totalKgs || 0},${r.avgRate?.toFixed(2) || 0},${r.stockValue || 0}\n`;
       });
@@ -431,7 +431,6 @@ export default function ReportResultPage() {
                     <th className="py-3.5 px-6 font-semibold">Bag Size</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Stock (Bags)</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Stock (Kg)</th>
-                    <th className="py-3.5 px-6 font-semibold text-right">Rate (₹)</th>
                     <th className="py-3.5 px-6 font-semibold text-right">MRP (₹)</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Stock Value (₹)</th>
                   </tr>
@@ -446,7 +445,6 @@ export default function ReportResultPage() {
                         {row.stockBags.toLocaleString('en-IN')}
                       </td>
                       <td className="py-3.5 px-6 text-sm text-right text-textDark">{row.stockKg.toLocaleString('en-IN')} kg</td>
-                      <td className="py-3.5 px-6 text-sm text-right text-textMuted">₹{(row.rate || 0).toLocaleString('en-IN')}</td>
                       <td className="py-3.5 px-6 text-sm text-right text-textMuted">₹{(row.mrp !== undefined ? row.mrp : (row.rate || 0)).toLocaleString('en-IN')}</td>
                       <td className="py-3.5 px-6 text-sm font-semibold text-right text-textDark">
                         ₹{row.stockValue.toLocaleString('en-IN')}
@@ -459,7 +457,6 @@ export default function ReportResultPage() {
                     <td colSpan="3" className="py-4 px-6 text-right font-display text-brownDark">Total Stock</td>
                     <td className="py-4 px-6 text-right font-bold text-brownDark">{reportData.summary?.stockBags.toLocaleString('en-IN')}</td>
                     <td className="py-4 px-6 text-right font-bold text-brownDark">{reportData.summary?.stockKg.toLocaleString('en-IN')} kg</td>
-                    <td></td>
                     <td></td>
                     <td className="py-4 px-6 text-right font-bold text-gold text-base">₹{reportData.summary?.stockValue.toLocaleString('en-IN')}</td>
                   </tr>
@@ -734,7 +731,7 @@ export default function ReportResultPage() {
                     <th className="py-3.5 px-6 font-semibold text-right">No. of Items</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Total Bags in Stock</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Total Kgs</th>
-                    <th className="py-3.5 px-6 font-semibold text-right">Avg Rate / MRP (₹/bag)</th>
+                    <th className="py-3.5 px-6 font-semibold text-right">Avg MRP (₹/bag)</th>
                     <th className="py-3.5 px-6 font-semibold text-right">Stock Value (₹)</th>
                   </tr>
                 </thead>

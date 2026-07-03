@@ -127,8 +127,7 @@ export const getTotalInventoryReport = async () => {
     const item = { id: docSnap.id, ...docSnap.data() };
     const stockBags = Number(item.stock) || 0;
     const bagKg = Number(item.bagKg) || 0;
-    const rate = Number(item.rate) || 0;
-    const mrp = item.mrp !== undefined ? Number(item.mrp) : rate;
+    const mrp = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : (Number(item.rate) || 0);
     const stockKg = stockBags * bagKg;
     const stockValue = stockBags * mrp;
     const categoryName = catMap.get(item.categoryKey) || item.categoryKey || '-';
@@ -140,7 +139,6 @@ export const getTotalInventoryReport = async () => {
       bagSize: bagKg ? `${bagKg} kg` : '-',
       stockBags,
       stockKg,
-      rate,
       mrp,
       stockValue
     });
@@ -628,8 +626,7 @@ export const getCategoryStockValueReport = async () => {
     }
     const bags = Number(item.stock || 0);
     const bagKg = Number(item.bagKg || 26);
-    const rate = Number(item.rate || 0);
-    const effPrice = item.mrp !== undefined ? Number(item.mrp) : rate;
+    const effPrice = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : (Number(item.rate) || 0);
 
     catMap[catKey].itemCount += 1;
     catMap[catKey].totalBags += bags;
@@ -842,8 +839,7 @@ export const getStockSummaryByVariety = async () => {
       catMap[catKey] = { category: CATEGORY_LABELS[catKey] || catKey, categoryKey: catKey, itemCount: 0, totalBags: 0, stockValue: 0 };
     }
     const bags = Number(item.stock || 0);
-    const rate = Number(item.rate || 0);
-    const effPrice = item.mrp !== undefined ? Number(item.mrp) : rate;
+    const effPrice = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : (Number(item.rate) || 0);
 
     catMap[catKey].itemCount += 1;
     catMap[catKey].totalBags += bags;
@@ -881,8 +877,7 @@ export const getCurrentStockReport = async () => {
     const catKey = item.categoryKey || 'raw';
     const category = CATEGORY_LABELS[catKey] || item.category || catKey;
     const bags = Number(item.stock || 0);
-    const rate = Number(item.rate || 0);
-    const mrp = item.mrp !== undefined ? Number(item.mrp) : rate;
+    const mrp = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : (Number(item.rate) || 0);
     const stockValue = bags * mrp;
 
     totalBags += bags;

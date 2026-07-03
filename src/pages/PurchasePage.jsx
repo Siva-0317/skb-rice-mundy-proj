@@ -33,20 +33,20 @@ function PurchaseCard({ purchase, formatDate }) {
 
       {/* ── TOP LINE: Supplier | Bill Pill | Total ── */}
       <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2 border-b border-border/40">
-        <span className="font-bold text-textDark text-sm truncate max-w-[38%]">
+        <span className="font-bold text-textDark text-base truncate max-w-[38%]">
           {purchase.supplierName || '—'}
         </span>
-        <span className="text-[11px] font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
+        <span className="text-sm font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
           {purchase.billNo || '—'}
         </span>
-        <span className="font-bold text-gold text-sm shrink-0">
+        <span className="font-bold text-gold text-base shrink-0">
           ₹{totalCost.toLocaleString('en-IN')}
         </span>
       </div>
 
       {/* ── SECOND LINE: Phone | Location | Date ── */}
       <div className="flex items-center justify-between gap-3 px-4 py-1.5">
-        <div className="flex items-center gap-3 text-xs text-textMuted min-w-0">
+        <div className="flex items-center gap-3 text-sm text-textMuted min-w-0">
           <span className="shrink-0">{phone}</span>
           {location && (
             <>
@@ -58,7 +58,7 @@ function PurchaseCard({ purchase, formatDate }) {
             </>
           )}
         </div>
-        <span className="text-xs text-textMuted shrink-0 font-medium">
+        <span className="text-sm text-textMuted shrink-0 font-medium">
           {formatDate(purchase.date || purchase.createdAt)}
         </span>
       </div>
@@ -66,7 +66,7 @@ function PurchaseCard({ purchase, formatDate }) {
       {/* ── THIRD LINE: Supply details table ── */}
       <div className="px-4 pb-2">
         {/* Column headers — only shown once */}
-        <div className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-textMuted border-t border-border/30">
+        <div className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 pt-1.5 pb-1 text-sm uppercase tracking-wider font-semibold text-textMuted border-t border-border/30">
           <span>Category</span>
           <span>Item</span>
           <span className="text-right">Bags</span>
@@ -74,7 +74,7 @@ function PurchaseCard({ purchase, formatDate }) {
           <span className="text-right">Total</span>
         </div>
         {/* Single item row (future: map over items array) */}
-        <div className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 items-center py-1 text-xs">
+        <div className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 items-center py-1 text-sm">
           <span className="text-textMuted truncate">{catLabel}</span>
           <span className="font-medium text-textDark truncate">{purchase.itemName || '—'}</span>
           <span className="text-right text-textDark tabular-nums">{Number(purchase.bags || 0).toLocaleString('en-IN')}</span>
@@ -90,24 +90,24 @@ function PurchaseCard({ purchase, formatDate }) {
           <div className="px-4 pt-3 pb-2">
             <div className="bg-panel/50 rounded-xl border border-border/60 p-3 grid grid-cols-3 gap-3 text-center">
               <div>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-textMuted mb-1">Payment Paid</p>
+                <p className="text-sm uppercase tracking-wider font-semibold text-textMuted mb-1">Payment Paid</p>
                 <p className={`text-sm font-bold ${amountPaid > 0 ? 'text-credit' : 'text-textMuted'}`}>
                   {amountPaid > 0 ? `₹${amountPaid.toLocaleString('en-IN')}` : 'Not recorded'}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-textMuted mb-1">Balance Due</p>
+                <p className="text-sm uppercase tracking-wider font-semibold text-textMuted mb-1">Balance Due</p>
                 <p className={`text-sm font-bold ${balance > 0 ? 'text-debit' : 'text-credit'}`}>
                   {balance > 0 ? `₹${balance.toLocaleString('en-IN')}` : '₹0'}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-textMuted mb-1">Total Cost</p>
+                <p className="text-sm uppercase tracking-wider font-semibold text-textMuted mb-1">Total Cost</p>
                 <p className="text-sm font-bold text-gold">₹{totalCost.toLocaleString('en-IN')}</p>
               </div>
             </div>
             {purchase.notes && (
-              <p className="text-xs text-textMuted italic mt-2 px-1">{purchase.notes}</p>
+              <p className="text-sm text-textMuted italic mt-2 px-1">{purchase.notes}</p>
             )}
           </div>
         )}
@@ -115,7 +115,7 @@ function PurchaseCard({ purchase, formatDate }) {
         {/* Toggle link */}
         <button
           onClick={() => setExpanded(prev => !prev)}
-          className="w-full flex items-center justify-end gap-1 px-4 py-2 text-[11px] font-semibold text-textMuted hover:text-gold transition-colors bg-panel/20 rounded-b-xl"
+          className="w-full flex items-center justify-end gap-1 px-4 py-2 text-sm font-semibold text-textMuted hover:text-gold transition-colors bg-panel/20 rounded-b-xl"
         >
           {expanded ? (
             <>
@@ -229,7 +229,7 @@ export default function PurchasePage() {
 
         {/* Column headers — shown once above the cards */}
         {!loading && purchases.length > 0 && (
-          <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-[10px] uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
+          <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-sm uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
             <span>Category</span>
             <span>Item</span>
             <span className="text-right">Bags</span>

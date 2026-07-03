@@ -116,7 +116,6 @@ export default function ItemsList() {
             <tr className="uppercase text-xs text-textMuted border-b border-border">
               <th className="py-3 px-6 font-medium w-1/3">Item Name</th>
               <th className="py-3 px-6 font-medium text-right">Bag Size</th>
-              <th className="py-3 px-6 font-medium text-right">Rate (₹)</th>
               <th className="py-3 px-6 font-medium text-right">MRP (₹)</th>
               <th className="py-3 px-6 font-medium text-right">Current Stock</th>
               <th className="py-3 px-6 font-medium text-center">Active</th>
@@ -134,7 +133,7 @@ export default function ItemsList() {
                     className="bg-bg/50 border-b border-border cursor-pointer hover:bg-bg/80 transition-colors"
                     onClick={() => toggleCategory(category.key)}
                   >
-                    <td colSpan="7" className="py-3 px-6">
+                    <td colSpan="6" className="py-3 px-6">
                       <div className="flex items-center gap-2 min-h-[36px]">
                         {isExpanded ? <ChevronDown className="w-4 h-4 text-textMuted" /> : <ChevronRight className="w-4 h-4 text-textMuted" />}
                         <span className="font-semibold text-textDark">{category.label}</span>
@@ -145,7 +144,7 @@ export default function ItemsList() {
                   </tr>
 
                   {isExpanded && catItems.length === 0 && (
-                    <tr className="border-b border-border"><td colSpan="7" className="py-4 text-center text-sm text-textMuted">No items in this category.</td></tr>
+                    <tr className="border-b border-border"><td colSpan="6" className="py-4 text-center text-sm text-textMuted">No items in this category.</td></tr>
                   )}
                   {isExpanded && catItems.map(item => {
                     const isHighlighted = highlightItemId === item.id;
@@ -157,8 +156,7 @@ export default function ItemsList() {
                       >
                         <td className="py-3 px-6 text-sm font-medium text-textDark pl-12">{item.name}</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.bagKg} kg</td>
-                      <td className="py-3 px-6 text-sm text-textDark text-right font-medium">₹{item.rate}</td>
-                      <td className="py-3 px-6 text-sm text-textMuted text-right">₹{item.mrp !== undefined ? item.mrp : item.rate}</td>
+                      <td className="py-3 px-6 text-sm text-textDark text-right font-medium">₹{item.mrp !== undefined && item.mrp !== null ? item.mrp : item.rate}</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.stock}</td>
                       <td className="py-3 px-6 text-center">
                         <button 

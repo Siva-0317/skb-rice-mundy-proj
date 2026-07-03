@@ -17,8 +17,6 @@ export default function Inventory() {
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [newStock, setNewStock] = useState('');
-  const [newRate, setNewRate] = useState('');
-  const [newMrp, setNewMrp] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { showToast } = useToast();
@@ -66,8 +64,6 @@ export default function Inventory() {
   const handleOpenModal = (item) => {
     setEditingItem(item);
     setNewStock((item.stock ?? 0).toString());
-    setNewRate((item.rate ?? 0).toString());
-    setNewMrp((item.mrp !== undefined ? item.mrp : (item.rate ?? 0)).toString());
     setIsModalOpen(true);
   };
 
@@ -75,8 +71,6 @@ export default function Inventory() {
     setIsModalOpen(false);
     setEditingItem(null);
     setNewStock('');
-    setNewRate('');
-    setNewMrp('');
   };
 
   const handleAdjustStock = async (e) => {
@@ -85,17 +79,13 @@ export default function Inventory() {
     
     setIsSubmitting(true);
     try {
-      await updateItem(editingItem.id, {
-        stock: Number(newStock),
-        rate: Number(newRate),
-        mrp: Number(newMrp)
-      });
-      showToast(`Stock & prices updated for ${editingItem.name}`, "success");
+      await adjustStock(editingItem.id, Number(newStock));
+      showToast(`Stock updated for ${editingItem.name}`, "success");
       await fetchData();
       handleCloseModal();
     } catch (error) {
       console.error("Error adjusting stock:", error);
-      showToast("Failed to adjust stock or prices", "error");
+      showToast("Failed to adjust stock", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -202,7 +192,6 @@ export default function Inventory() {
               <tr className="uppercase text-xs text-textMuted border-b border-border">
                 <th className="py-3 px-6 font-medium w-1/4">Item</th>
                 <th className="py-3 px-6 font-medium text-right">Bag Size</th>
-                <th className="py-3 px-6 font-medium text-right">Rate (₹)</th>
                 <th className="py-3 px-6 font-medium text-right">MRP (₹)</th>
                 <th className="py-3 px-6 font-medium text-right">Stock (bags)</th>
                 <th className="py-3 px-6 font-medium text-right">Stock Value (₹)</th>
@@ -223,7 +212,7 @@ export default function Inventory() {
                       className="bg-bg/50 border-b border-border cursor-pointer hover:bg-bg/80 transition-colors"
                       onClick={() => toggleCategory(category.key)}
                     >
-                      <td colSpan="8" className="py-3 px-6">
+                      <td colSpan="7" className="py-3 px-6">
                         <div className="flex items-center gap-2 min-h-[36px]">
                           {isExpanded ? <ChevronDown className="w-4 h-4 text-textMuted" /> : <ChevronRight className="w-4 h-4 text-textMuted" />}
                           <span className="font-semibold text-textDark">{category.label}</span>
@@ -234,11 +223,11 @@ export default function Inventory() {
                     </tr>
 
                     {isExpanded && catItems.length === 0 && (
-                      <tr className="border-b border-border"><td colSpan="8" className="py-4 text-center text-sm text-textMuted">No items in this category.</td></tr>
+                      <tr className="border-b border-border"><td colSpan="7" className="py-4 text-center text-sm text-textMuted">No items in this category.</td></tr>
                     )}
                     {isExpanded && catItems.map(item => {
                       const isLowStock = Number(item.stock) < LOW_STOCK_THRESHOLD;
-                      const effPrice = item.mrp !== undefined ? Number(item.mrp) : Number(item.rate || 0);
+                      const effPrice = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : Number(item.rate || 0);
                       const stockVal = (Number(item.stock) || 0) * effPrice;
                       
                       return (
@@ -258,7 +247,6 @@ export default function Inventory() {
                             </div>
                           </td>
                           <td className="py-3 px-6 text-sm text-textDark text-right">{item.bagKg} kg</td>
-                          <td className="py-3 px-6 text-sm text-textDark text-right font-medium">₹{Number(item.rate || 0).toLocaleString('en-IN')}</td>
                           <td className="py-3 px-6 text-sm text-textMuted text-right">₹{effPrice.toLocaleString('en-IN')}</td>
                           <td className="py-3 px-6 text-right">
                             <span className={`font-bold text-lg ${isLowStock ? 'text-debit' : 'text-textDark'}`}>
@@ -275,7 +263,7 @@ export default function Inventory() {
                             <button 
                               onClick={() => handleOpenModal(item)}
                               className="p-2.5 text-textMuted hover:text-gold transition-colors bg-white rounded-lg border border-transparent hover:border-gold/30 shadow-sm hover:shadow min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
-                              title="Adjust Stock & Prices"
+                              title="Adjust Stock"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
@@ -291,12 +279,12 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* ADJUST STOCK & PRICES MODAL */}
+      {/* ADJUST STOCK MODAL */}
       {isModalOpen && editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-border flex flex-col">
             <div className="flex justify-between items-center p-5 border-b border-border bg-panel/30">
-              <h3 className="font-display font-semibold text-lg text-brownDark">Adjust Stock & Prices</h3>
+              <h3 className="font-display font-semibold text-lg text-brownDark">Adjust Stock</h3>
               <button onClick={handleCloseModal} className="text-textMuted hover:text-textDark transition-colors p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center">
                 <X className="w-5 h-5" />
               </button>
@@ -321,33 +309,6 @@ export default function Inventory() {
                     className="w-full px-4 py-2.5 text-base font-medium rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 bg-panel/30 min-h-[44px]"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-textDark mb-1">Rate (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={newRate}
-                      onChange={(e) => setNewRate(e.target.value)}
-                      className="w-full px-3 py-2.5 text-base font-medium rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 bg-panel/30 min-h-[44px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-textDark mb-1">Selling Price / MRP (₹)</label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={newMrp}
-                      onChange={(e) => setNewMrp(e.target.value)}
-                      className="w-full px-3 py-2.5 text-base font-medium rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 bg-panel/30 min-h-[44px]"
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="flex justify-end gap-3 mt-8">
@@ -360,10 +321,10 @@ export default function Inventory() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || newStock === '' || newRate === '' || newMrp === ''}
+                  disabled={isSubmitting || newStock === ''}
                   className="px-4 py-2 rounded-lg font-medium text-sm bg-gold text-white hover:bg-gold/90 transition-colors disabled:opacity-70 shadow-sm min-h-[44px]"
                 >
-                  {isSubmitting ? 'Saving...' : 'Update Details'}
+                  {isSubmitting ? 'Saving...' : 'Update Stock'}
                 </button>
               </div>
             </form>

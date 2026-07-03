@@ -15,7 +15,6 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
     name: '',
     categoryKey: '',
     bagKg: '',
-    rate: '',
     mrp: '',
     stock: ''
   });
@@ -27,8 +26,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
           name: editingItem.name || '',
           categoryKey: editingItem.categoryKey || '',
           bagKg: editingItem.bagKg || '',
-          rate: editingItem.rate || '',
-          mrp: editingItem.mrp !== undefined ? editingItem.mrp : (editingItem.rate || ''),
+          mrp: editingItem.mrp !== undefined && editingItem.mrp !== null ? editingItem.mrp : (editingItem.rate || ''),
           stock: editingItem.stock || ''
         });
       } else {
@@ -36,7 +34,6 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
           name: '',
           categoryKey: categories[0]?.key || '',
           bagKg: '',
-          rate: '',
           mrp: '',
           stock: ''
         });
@@ -48,6 +45,12 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const numMrp = Number(formData.mrp);
+    if (isNaN(numMrp) || numMrp <= 0) {
+      showToast("Selling Price / MRP must be greater than 0", "error");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -55,8 +58,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
         name: formData.name,
         categoryKey: formData.categoryKey,
         bagKg: Number(formData.bagKg),
-        rate: Number(formData.rate),
-        mrp: Number(formData.mrp),
+        mrp: numMrp,
         stock: editingItem ? editingItem.stock : Number(formData.stock),
         active: editingItem ? editingItem.active : true
       };
@@ -65,7 +67,6 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
         await updateItem(editingItem.id, {
           categoryKey: payload.categoryKey,
           bagKg: payload.bagKg,
-          rate: payload.rate,
           mrp: payload.mrp
         });
         showToast("Item updated successfully.");
@@ -130,24 +131,11 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-textDark mb-1">Rate (₹)</label>
-              <input
-                type="number"
-                required
-                min="0"
-                step="0.01"
-                value={formData.rate}
-                disabled={!isOwner}
-                onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 disabled:bg-panel disabled:text-textMuted min-h-[44px]"
-              />
-            </div>
-            <div>
               <label className="block text-sm font-medium text-textDark mb-1">Selling Price / MRP (₹)</label>
               <input
                 type="number"
                 required
-                min="0"
+                min="0.01"
                 step="0.01"
                 value={formData.mrp}
                 disabled={!isOwner}
@@ -155,7 +143,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
                 className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 disabled:bg-panel disabled:text-textMuted min-h-[44px]"
               />
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-sm font-medium text-textDark mb-1">Opening Stock (bags)</label>
               <input
                 type="number"

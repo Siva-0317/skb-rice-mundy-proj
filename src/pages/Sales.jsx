@@ -652,7 +652,7 @@ export default function Sales() {
 
                   {/* Column Headers — shown once above the cards */}
                   {!salesLoading && recentSales.length > 0 && (
-                    <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-[10px] uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
+                    <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-sm uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
                       <span>Category</span>
                       <span>Item</span>
                       <span className="text-right">Bags</span>
@@ -700,13 +700,13 @@ export default function Sales() {
                             >
                               {/* ── TOP LINE: Customer | Bill Pill | Total ── */}
                               <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5 border-b border-border/50">
-                                <span className="font-bold text-textDark text-sm truncate max-w-[35%]">
+                                <span className="font-bold text-textDark text-base truncate max-w-[35%]">
                                   {sale.customerName}
                                 </span>
-                                <span className="text-[11px] font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
+                                <span className="text-sm font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
                                   {sale.billNo}
                                 </span>
-                                <span className="font-bold text-textDark text-sm shrink-0">
+                                <span className="font-bold text-textDark text-base shrink-0">
                                   ₹{itemsTotal.toLocaleString('en-IN')}
                                 </span>
                               </div>
@@ -714,7 +714,7 @@ export default function Sales() {
                               {/* ── MIDDLE: Item rows table ── */}
                               <div className="px-4 py-2 space-y-0.5">
                                 {saleItems.length === 0 ? (
-                                  <p className="text-xs text-textMuted italic py-1">No item details recorded.</p>
+                                  <p className="text-sm text-textMuted italic py-1">No item details recorded.</p>
                                 ) : (
                                   saleItems.map((item, idx) => {
                                     const unitMrp = Number(item.mrp ?? item.rate ?? 0);
@@ -724,7 +724,7 @@ export default function Sales() {
                                     return (
                                       <div
                                         key={idx}
-                                        className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 items-center py-1 text-xs"
+                                        className="grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 items-center py-1 text-sm"
                                       >
                                         <span className="text-textMuted truncate">{catLabel}</span>
                                         <span className="font-medium text-textDark truncate">{itemLabel}</span>
@@ -740,7 +740,7 @@ export default function Sales() {
                               {/* ── BOTTOM LINE: Date/Remarks | Payment Info | Edit ── */}
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 border-t border-border/50 bg-panel/20 rounded-b-xl">
                                 {/* Left: Date + Remarks */}
-                                <div className="text-xs text-textMuted space-y-0.5 min-w-0">
+                                <div className="text-sm text-textMuted space-y-0.5 min-w-0">
                                   <div className="font-medium text-textDark">{formatDate(sale.date)}</div>
                                   {sale.remarks && (
                                     <div className="truncate max-w-[200px] italic">{sale.remarks}</div>
@@ -748,7 +748,7 @@ export default function Sales() {
                                 </div>
 
                                 {/* Center: Payment pills */}
-                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <div className="flex flex-wrap items-center gap-1.5 text-sm">
                                   <span className="font-semibold text-credit bg-green-50 border border-green-200/70 px-2 py-0.5 rounded-full">
                                     Paid: ₹{adv.toLocaleString('en-IN')}
                                   </span>
@@ -771,7 +771,7 @@ export default function Sales() {
                                 {/* Right: Edit button */}
                                 <button
                                   onClick={() => handleEditClick(sale)}
-                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/50 hover:bg-gold/5 rounded-lg transition-all"
+                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/50 hover:bg-gold/5 rounded-lg transition-all"
                                   title="Edit Sale"
                                 >
                                   <Pencil className="w-3.5 h-3.5" />

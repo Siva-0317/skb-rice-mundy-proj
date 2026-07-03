@@ -17,7 +17,14 @@ export const getCategories = async () => {
 export const getItems = async () => {
   const q = query(collection(db, "items"), orderBy("name", "asc"));
   const snapshot = await getDocs(q);
-  const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const items = snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      mrp: data.mrp !== undefined && data.mrp !== null ? Number(data.mrp) : (Number(data.rate) || 0)
+    };
+  });
   
   // Deduplicate by itemId and name
   const seenIds = new Set();
@@ -36,17 +43,20 @@ export const addItem = async (data) => {
   const newDocRef = doc(collection(db, "items"));
   const payload = {
     ...data,
-    rate: Number(data.rate) || 0,
-    mrp: data.mrp !== undefined && data.mrp !== '' ? Number(data.mrp) : (Number(data.rate) || 0),
+    mrp: Number(data.mrp) || (Number(data.rate) || 0),
     updatedAt: serverTimestamp()
   };
+  delete payload.rate;
   await setDoc(newDocRef, payload);
   return newDocRef.id;
 };
 
 export const updateItem = async (itemId, data) => {
   const itemRef = doc(db, "items", itemId);
-  await updateDoc(itemRef, { ...data, updatedAt: serverTimestamp() });
+  const payload = { ...data, updatedAt: serverTimestamp() };
+  if (payload.mrp !== undefined) payload.mrp = Number(payload.mrp);
+  delete payload.rate;
+  await updateDoc(itemRef, payload);
 };
 
 export const setItemActive = async (itemId, isActive) => {
@@ -134,7 +144,6 @@ export const seedIfEmpty = async () => {
         name: item.name,
         categoryKey: item.categoryKey,
         bagKg: item.bagKg,
-        rate: item.rate,
         mrp: item.rate,
         stock: 0,
         active: true,
