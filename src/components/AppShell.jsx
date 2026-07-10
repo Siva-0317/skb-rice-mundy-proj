@@ -1,11 +1,11 @@
 import { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Users, 
-  LineChart, 
-  Boxes, 
-  BarChart2, 
+  LayoutDashboard,
+  Users,
+  LineChart,
+  Boxes,
+  BarChart2,
   Star,
   LogOut,
   Bell,
@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   AlertCircle,
-  ShoppingBag
+  ShoppingBag,
+  BookOpen
 } from 'lucide-react';
 import { signOutUser } from '../firebase/auth';
 import { AuthContext } from '../context/AuthContext';
@@ -26,6 +27,7 @@ const NAV_LINKS = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { name: 'Customers', path: '/customers', icon: Users },
   { name: 'Sales', path: '/sales', icon: LineChart },
+  { name: 'Ledger', path: '/ledger', icon: BookOpen },
   { name: 'Purchase', path: '/purchase', icon: ShoppingBag },
   { name: 'Inventory', path: '/inventory', icon: Boxes },
   { name: 'Reports', path: '/reports', icon: BarChart2 },

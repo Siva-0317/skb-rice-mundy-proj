@@ -1,7 +1,8 @@
 import { useState, useEffect, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Trash2, ChevronDown, ChevronRight, IndianRupee, Pencil } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
-import { getCategories, getItems } from '../firebase/items';
+import { getItems } from '../firebase/items';
 import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
 import { AuthContext } from '../context/AuthContext';
@@ -10,9 +11,10 @@ import InvoiceRowsTable from '../components/InvoiceRowsTable';
 
 export default function Sales() {
   const { user } = useContext(AuthContext);
+  const location = useLocation();
+  const navigate = useNavigate();
   // Master Data
   const [customers, setCustomers] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [items, setItems] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [nextBillNo, setNextBillNo] = useState('');
@@ -64,15 +66,13 @@ export default function Sales() {
   const loadData = async () => {
     try {
       const initDate = new Date();
-      const [custData, catData, itemData, recentData, billNo] = await Promise.all([
+      const [custData, itemData, recentData, billNo] = await Promise.all([
         getCustomers(),
-        getCategories(),
         getItems(),
         getSalesByMonth(initDate.getFullYear(), initDate.getMonth()),
         getNextBillNo()
       ]);
       setCustomers(custData);
-      setCategories(catData);
       setItems(itemData);
       setRecentSales(recentData);
       setNextBillNo(billNo);
@@ -87,6 +87,13 @@ export default function Sales() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!loading && location.state?.customerId) {
+      setCustomerId(location.state.customerId);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [loading, location.state]);
 
   useEffect(() => {
     if (!loading) {
@@ -115,11 +122,12 @@ export default function Sales() {
       if (row.id === id) {
         const updatedRow = { ...row, [field]: value };
         
-        // If item changes, auto-fill bagKg, rate, mrp
+        // If item changes, auto-fill category, bagKg, rate, mrp
         if (field === 'itemId') {
           const selectedItem = items.find(i => i.id === value);
           if (selectedItem) {
             updatedRow.item = selectedItem;
+            updatedRow.categoryKey = selectedItem.categoryKey || '';
             updatedRow.bagKg = selectedItem.bagKg;
             updatedRow.rate = selectedItem.rate;
             updatedRow.mrp = selectedItem.mrp !== undefined ? selectedItem.mrp : selectedItem.rate;
@@ -128,25 +136,15 @@ export default function Sales() {
             updatedRow.bags = '';
           } else {
             updatedRow.item = null;
+            updatedRow.categoryKey = '';
             updatedRow.bagKg = '';
             updatedRow.rate = '';
             updatedRow.mrp = '';
             updatedRow.priceField = 'mrp';
           }
         }
-        
-        // If category changes, reset item
-        if (field === 'categoryKey') {
-          updatedRow.itemId = '';
-          updatedRow.item = null;
-          updatedRow.bagKg = '';
-          updatedRow.rate = '';
-          updatedRow.mrp = '';
-          updatedRow.priceField = 'mrp';
-          updatedRow.bags = '';
-        }
 
-        if (field === 'bags' || field === 'itemId' || field === 'categoryKey') {
+        if (field === 'bags' || field === 'itemId') {
           const checkItemId = updatedRow.itemId;
           if (checkItemId && updatedRow.bags !== '' && !isNaN(Number(updatedRow.bags))) {
             const masterItem = items.find(i => i.id === checkItemId);
@@ -473,9 +471,8 @@ export default function Sales() {
             </div>
 
             {/* Items Table */}
-            <InvoiceRowsTable 
+            <InvoiceRowsTable
               rows={calculatedRows}
-              categories={categories}
               items={items}
               onAddRow={handleAddRow}
               onRemoveRow={handleRemoveRow}

@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, limit, limitToLast, startAfter, startAt, endBefore, where } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
 import { db } from "./config";
 
 export const getCustomers = async () => {
@@ -20,41 +20,81 @@ export const getCustomerLedger = async (id) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const getCustomerLedgerPaginated = async (id, {
-  pageSize = 20,
-  direction = 'initial',
-  firstDoc = null,
-  lastDoc = null,
-  targetCursor = null
-} = {}) => {
+const toMillis = (val) => {
+  if (!val) return 0;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') return val.toDate().getTime();
+  if (typeof val.seconds === 'number') return val.seconds * 1000;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
+// Ledger entries are sorted by business date first (most recent day on top, like a
+// bank statement), then by actual recording time as a tiebreaker for same-day entries —
+// this keeps same-day sale/payment order correct even though sales and payments can be
+// backdated to any business date independently of when they were entered. A final `seq`
+// tiebreak handles entries written in the same transaction (e.g. a sale plus its
+// auto-applied excess payment) — these share the exact same createdAt server timestamp,
+// so seq is the only signal that the excess payment happened logically after its sale.
+export const getCustomerLedgerPaginated = async (id, { pageSize = 20, page = 1 } = {}) => {
   const ledgerColRef = collection(db, "customers", id, "ledger");
-  const allSnap = await getDocs(query(ledgerColRef));
-  const totalCount = allSnap.size;
-
-  const constraints = [orderBy("date", "desc")];
-  if (direction === 'next' && lastDoc) {
-    constraints.push(startAfter(lastDoc));
-    constraints.push(limit(pageSize));
-  } else if (direction === 'prev' && targetCursor) {
-    constraints.push(startAt(targetCursor));
-    constraints.push(limit(pageSize));
-  } else if (direction === 'prev' && firstDoc && !targetCursor) {
-    constraints.push(endBefore(firstDoc));
-    constraints.push(limitToLast(pageSize));
-  } else {
-    constraints.push(limit(pageSize));
-  }
-
-  const q = query(ledgerColRef, ...constraints);
-  const snap = await getDocs(q);
+  const snap = await getDocs(query(ledgerColRef));
   const entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  return {
-    entries,
-    firstDoc: snap.docs.length > 0 ? snap.docs[0] : null,
-    lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
-    totalCount
-  };
+  entries.sort((a, b) => {
+    const dateDiff = toMillis(b.date) - toMillis(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    const createdDiff = toMillis(b.createdAt) - toMillis(a.createdAt);
+    if (createdDiff !== 0) return createdDiff;
+    return (Number(b.seq) || 0) - (Number(a.seq) || 0);
+  });
+
+  const totalCount = entries.length;
+  const start = (page - 1) * pageSize;
+  const pageEntries = entries.slice(start, start + pageSize);
+
+  return { entries: pageEntries, totalCount };
+};
+
+// Global ledger: every customer's ledger entries merged into a single chronological
+// stream with a business-wide running balance. Unlike the per-customer ledger, the
+// stored `balanceAfter` (which is per-customer) is ignored — we recompute a fresh
+// running total of debit − credit across ALL customers, oldest → newest. The most
+// recent running balance therefore equals total receivables across the business,
+// which ties out to the Dashboard's Total Outstanding.
+export const getGlobalLedger = async () => {
+  const customersSnap = await getDocs(collection(db, "customers"));
+  const customers = customersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const all = [];
+  for (const c of customers) {
+    const ledgerSnap = await getDocs(collection(db, "customers", c.id, "ledger"));
+    ledgerSnap.docs.forEach(d => {
+      all.push({ id: d.id, customerId: c.id, customerName: c.name || '—', ...d.data() });
+    });
+  }
+
+  // Oldest → newest so the cumulative balance builds up correctly.
+  all.sort((a, b) => {
+    const dateDiff = toMillis(a.date) - toMillis(b.date);
+    if (dateDiff !== 0) return dateDiff;
+    const createdDiff = toMillis(a.createdAt) - toMillis(b.createdAt);
+    if (createdDiff !== 0) return createdDiff;
+    const seqDiff = (Number(a.seq) || 0) - (Number(b.seq) || 0);
+    if (seqDiff !== 0) return seqDiff;
+    if (a.customerName !== b.customerName) return a.customerName < b.customerName ? -1 : 1;
+    return a.id < b.id ? -1 : 1;
+  });
+
+  let running = 0;
+  for (const e of all) {
+    running += (Number(e.debit) || 0) - (Number(e.credit) || 0);
+    e.globalBalanceAfter = running;
+  }
+
+  // Newest first for display (bank-statement style).
+  all.reverse();
+  return all;
 };
 
 export const addCustomer = async ({ name, mobile, openingBalance }) => {
@@ -79,7 +119,8 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
       debit: numBalance,
       credit: 0,
       balanceAfter: numBalance,
-      date: serverTimestamp()
+      date: serverTimestamp(),
+      createdAt: serverTimestamp()
     });
   }
 

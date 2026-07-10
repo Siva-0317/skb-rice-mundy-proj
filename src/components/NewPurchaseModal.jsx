@@ -60,8 +60,13 @@ export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
   const handleItemChange = (id) => {
     setItemId(id);
     const sel = items.find(i => i.id === id);
-    if (sel && sel.rate && !costPerBag) {
-      setCostPerBag(String(sel.rate));
+    if (sel) {
+      if (sel.categoryKey) {
+        setCategoryKey(sel.categoryKey);
+      }
+      if (sel.rate && !costPerBag) {
+        setCostPerBag(String(sel.rate));
+      }
     }
   };
 
