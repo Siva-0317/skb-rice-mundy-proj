@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import CustomerDetails from './pages/CustomerDetails';
 import Sales from './pages/Sales';
+import Ledger from './pages/Ledger';
 import Inventory from './pages/Inventory';
 import Reports from './pages/Reports';
 import ReportResultPage from './pages/ReportResultPage';
@@ -44,6 +45,12 @@ function App() {
         <Route path="/sales" element={
           <ProtectedRoute>
             <AppShell title="Sales"><Sales /></AppShell>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/ledger" element={
+          <ProtectedRoute>
+            <AppShell title="Ledger"><Ledger /></AppShell>
           </ProtectedRoute>
         } />
 

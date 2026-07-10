@@ -1,27 +1,117 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Plus, Trash2, Search } from 'lucide-react';
 
-export default function InvoiceRowsTable({ rows, categories, items, onAddRow, onRemoveRow, onRowChange, onRowBlur, rowErrors = {}, rowWarnings = {} }) {
+function ItemSearchSelect({ value, items, onChange, disabled }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [menuRect, setMenuRect] = useState(null);
+  const containerRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        containerRef.current && !containerRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const handleReposition = (e) => {
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleReposition, true);
+    window.addEventListener('resize', handleReposition);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleReposition, true);
+      window.removeEventListener('resize', handleReposition);
+    };
+  }, []);
+
+  const openMenu = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setMenuRect({ top: rect.bottom, left: rect.left, width: rect.width });
+    }
+    setOpen(true);
+    setQuery('');
+  };
+
+  const selectedItem = items.find(i => i.id === value);
+  const filteredItems = query.trim()
+    ? items.filter(i => i.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : items;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-textMuted pointer-events-none" />
+      <input
+        type="text"
+        value={open ? query : (selectedItem ? `${selectedItem.name} · ${selectedItem.bagKg}kg` : '')}
+        onFocus={openMenu}
+        onChange={(e) => { setQuery(e.target.value); if (!open) openMenu(); }}
+        disabled={disabled}
+        placeholder="Search item..."
+        className="w-full pl-8 pr-2 py-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white disabled:bg-panel min-h-[44px]"
+      />
+
+      {open && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+          className="z-50 mt-1 bg-white border border-border rounded-md shadow-lg flex flex-col"
+        >
+          <div className="max-h-72 overflow-y-auto thin-scrollbar">
+            {filteredItems.length === 0 ? (
+              <div className="p-3 text-sm text-textMuted">No items found</div>
+            ) : (
+              filteredItems.map(i => (
+                <div
+                  key={i.id}
+                  onClick={() => { onChange(i.id); setOpen(false); setQuery(''); }}
+                  className={`px-3 py-2 text-sm cursor-pointer hover:bg-panel/60 ${i.id === value ? 'bg-gold/10 font-medium text-textDark' : 'text-textDark'}`}
+                >
+                  {i.name} · {i.bagKg}kg
+                </div>
+              ))
+            )}
+          </div>
+          {filteredItems.length > 6 && (
+            <div className="px-3 py-1.5 text-[11px] text-textMuted border-t border-border bg-panel/30 shrink-0">
+              {filteredItems.length} items · scroll for more
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+export default function InvoiceRowsTable({ rows, items, onAddRow, onRemoveRow, onRowChange, onRowBlur, rowErrors = {}, rowWarnings = {} }) {
+  const sortedItems = [...items].sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto max-h-[60vh]">
-        <table className="w-full text-left border-collapse min-w-[750px]">
+        <table className="w-full text-left border-collapse min-w-[650px]">
           <thead className="sticky top-0 z-10 bg-panel shadow-sm">
             <tr className="text-xs uppercase text-textMuted border-b border-border">
-              <th className="py-3 px-3 font-medium w-[18%]">Category</th>
-              <th className="py-3 px-3 font-medium w-[24%]">Item</th>
-              <th className="py-3 px-3 font-medium w-[9%]">Bags</th>
-              <th className="py-3 px-3 font-medium w-[9%]">Bag wt</th>
-              <th className="py-3 px-3 font-medium w-[10%]">Total kgs</th>
-              <th className="py-3 px-3 font-medium w-[14%]">MRP</th>
-              <th className="py-3 px-3 font-medium text-right w-[12%]">Amount</th>
-              <th className="py-3 px-3 w-[4%]"></th>
+              <th className="py-3 px-3 font-medium w-[30%]">Item</th>
+              <th className="py-3 px-3 font-medium w-[10%]">Bags</th>
+              <th className="py-3 px-3 font-medium w-[10%]">Bag wt</th>
+              <th className="py-3 px-3 font-medium w-[12%]">Total kgs</th>
+              <th className="py-3 px-3 font-medium w-[16%]">MRP</th>
+              <th className="py-3 px-3 font-medium text-right w-[16%]">Amount</th>
+              <th className="py-3 px-3 w-[6%]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((row) => {
-              const filteredItems = row.categoryKey 
-                ? items.filter(i => i.categoryKey === row.categoryKey)
-                : items;
               const computedKgs = (row.itemId && row.bags && row.bagKg)
                 ? Number(row.bags) * Number(row.bagKg)
                 : 0;
@@ -29,29 +119,11 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
               return (
                 <tr key={row.id} className={`bg-white ${rowErrors[row.id] ? 'bg-red-50/20' : ''}`}>
                   <td className="p-2 align-top">
-                    <select
-                      value={row.categoryKey}
-                      onChange={(e) => onRowChange(row.id, 'categoryKey', e.target.value)}
-                      className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white min-h-[44px]"
-                    >
-                      <option value="">All categories</option>
-                      {categories.map(c => (
-                        <option key={c.key} value={c.key}>{c.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-2 align-top">
-                    <select
+                    <ItemSearchSelect
                       value={row.itemId}
-                      onChange={(e) => onRowChange(row.id, 'itemId', e.target.value)}
-                      disabled={filteredItems.length === 0}
-                      className="w-full p-2 rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-base sm:text-sm bg-white disabled:bg-panel min-h-[44px]"
-                    >
-                      <option value="">Select item...</option>
-                      {filteredItems.map(i => (
-                        <option key={i.id} value={i.id}>{i.name} · {i.bagKg}kg</option>
-                      ))}
-                    </select>
+                      items={sortedItems}
+                      onChange={(itemId) => onRowChange(row.id, 'itemId', itemId)}
+                    />
                   </td>
                   <td className="p-2 align-top">
                     <input
@@ -122,7 +194,7 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
         </table>
       </div>
       <div className="bg-panel/30 p-3 border-t border-border">
-        <button 
+        <button
           onClick={onAddRow}
           className="flex items-center gap-1.5 text-sm font-medium text-gold hover:text-gold/80 transition-colors"
         >
@@ -132,4 +204,3 @@ export default function InvoiceRowsTable({ rows, categories, items, onAddRow, on
     </div>
   );
 }
-

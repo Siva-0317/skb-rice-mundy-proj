@@ -27,3 +27,6 @@ dist-ssr
 # Seed script credentials and modules
 /seed/serviceAccountKey.json
 /seed/node_modules
+
+# Claude Code local harness config
+.claude/

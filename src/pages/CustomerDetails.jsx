@@ -22,10 +22,7 @@ export default function CustomerDetails() {
   const [activeTab, setActiveTab] = useState('ledger');
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageCursors, setPageCursors] = useState([]);
   const [totalLedgerCount, setTotalLedgerCount] = useState(0);
-  const [firstDoc, setFirstDoc] = useState(null);
-  const [lastDoc, setLastDoc] = useState(null);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,34 +33,12 @@ export default function CustomerDetails() {
   const [editMode, setEditMode] = useState('');
   const [editNote, setEditNote] = useState('');
 
-  const fetchLedgerPage = async (pageTarget, direction = 'initial') => {
+  const fetchLedgerPage = async (pageTarget = 1) => {
     try {
-      let result;
-      if (direction === 'next') {
-        result = await getCustomerLedgerPaginated(id, { pageSize: 20, direction: 'next', lastDoc });
-        if (result.entries.length > 0) {
-          setPageCursors(prev => {
-            const next = [...prev];
-            next[currentPage - 1] = firstDoc;
-            return next;
-          });
-          setCurrentPage(prev => prev + 1);
-        }
-      } else if (direction === 'prev') {
-        const targetCursor = pageCursors[pageTarget - 1] || null;
-        result = await getCustomerLedgerPaginated(id, { pageSize: 20, direction: 'prev', firstDoc, targetCursor });
-        if (result.entries.length > 0) {
-          setCurrentPage(pageTarget);
-        }
-      } else {
-        result = await getCustomerLedgerPaginated(id, { pageSize: 20 });
-        setCurrentPage(1);
-        setPageCursors([]);
-      }
+      const result = await getCustomerLedgerPaginated(id, { pageSize: 20, page: pageTarget });
       setLedger(result.entries);
-      setFirstDoc(result.firstDoc);
-      setLastDoc(result.lastDoc);
       setTotalLedgerCount(result.totalCount);
+      setCurrentPage(pageTarget);
     } catch (err) {
       console.error("Error loading ledger page:", err);
     }
@@ -73,8 +48,8 @@ export default function CustomerDetails() {
     try {
       const custData = await getCustomer(id);
       setCustomer(custData);
-      
-      await fetchLedgerPage(1, 'initial');
+
+      await fetchLedgerPage(1);
 
       const salesQ = query(
         collection(db, "sales"), 
@@ -197,13 +172,21 @@ export default function CustomerDetails() {
             </p>
           </div>
           
-          <button 
-            onClick={() => setIsPaymentModalOpen(true)}
-            disabled={customer.balance <= 0}
-            className="bg-gold text-white px-6 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Record Payment
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/sales', { state: { customerId: id } })}
+              className="bg-white text-gold border border-gold px-6 py-2 rounded-lg hover:bg-gold/5 transition-colors font-medium shadow-sm"
+            >
+              Record Sale
+            </button>
+            <button
+              onClick={() => setIsPaymentModalOpen(true)}
+              disabled={customer.balance <= 0}
+              className="bg-gold text-white px-6 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Record Payment
+            </button>
+          </div>
         </div>
       </div>
 
@@ -285,7 +268,7 @@ export default function CustomerDetails() {
               </table>
               <div className="flex items-center justify-between p-4 border-t border-border bg-panel/30">
                 <button
-                  onClick={() => fetchLedgerPage(currentPage - 1, 'prev')}
+                  onClick={() => fetchLedgerPage(currentPage - 1)}
                   disabled={currentPage <= 1}
                   className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-white text-textDark hover:bg-gold/10 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                 >
@@ -295,7 +278,7 @@ export default function CustomerDetails() {
                   Showing {startIdx}–{endIdx} of {totalLedgerCount} entries
                 </span>
                 <button
-                  onClick={() => fetchLedgerPage(currentPage + 1, 'next')}
+                  onClick={() => fetchLedgerPage(currentPage + 1)}
                   disabled={isLastPage}
                   className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-white text-textDark hover:bg-gold/10 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                 >
