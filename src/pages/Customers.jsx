@@ -4,6 +4,7 @@ import { Search, Plus, ChevronRight } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST } from '../utils/dateIST';
 import AddCustomerModal from '../components/AddCustomerModal';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 
@@ -51,12 +52,7 @@ export default function Customers() {
     c.mobile.includes(searchQuery)
   );
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '-';
-    return new Date(timestamp.toDate()).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    });
-  };
+  const formatDate = (timestamp) => formatDateIST(timestamp);
 
   return (
     <div className="space-y-6">
@@ -95,7 +91,8 @@ export default function Customers() {
               ? 'bg-credit/10 text-credit border-credit/20'
               : 'bg-textMuted/10 text-textMuted border-border';
             const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : 'Settled';
-            const hasBalance = customer.balance > 0;
+            const balanceAmount = Number(customer.balance) || 0;
+            const hasBalance = balanceAmount > 0;
 
             return (
               <div
@@ -113,7 +110,7 @@ export default function Customers() {
                   <p className="text-sm text-textMuted mt-0.5">{customer.mobile}</p>
 
                   <p className={`text-2xl font-bold mt-4 ${hasBalance ? 'text-debit' : 'text-textMuted'}`}>
-                    {hasBalance ? `₹${customer.balance.toLocaleString('en-IN')}` : 'Settled'}
+                    {hasBalance ? `₹${balanceAmount.toLocaleString('en-IN')}` : 'Settled'}
                   </p>
                   <p className="text-xs text-textMuted mt-0.5">
                     {hasBalance ? 'Outstanding balance' : 'No dues'}

@@ -1,5 +1,6 @@
 import { doc, collection, getDocs, query, orderBy, limit, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
+import { toMillis } from "../utils/dateIST";
 
 export const editLedgerEntry = async (personType, personId, entryId, { amount, mode, note }) => {
   const numAmount = Number(amount);
@@ -13,7 +14,11 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
   const entryRef = doc(db, collectionName, personId, "ledger", entryId);
   const personRef = doc(db, collectionName, personId);
   const ledgerColRef = collection(db, collectionName, personId, "ledger");
-  const recentQuery = query(ledgerColRef, orderBy("date", "desc"), limit(1));
+  // Firestore's orderBy("date") alone doesn't distinguish same-day entries, so the
+  // "most recent" doc it returns can be an arbitrary same-day sibling rather than the
+  // true latest one. Over-fetch a buffer past same-day ties and re-sort client-side
+  // with the same (date, createdAt, seq) tiebreak used for ledger display everywhere else.
+  const recentQuery = query(ledgerColRef, orderBy("date", "desc"), limit(10));
 
   await runTransaction(db, async (transaction) => {
     const entrySnap = await transaction.get(entryRef);
@@ -26,8 +31,18 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
     }
 
     const recentSnap = await getDocs(recentQuery);
-    if (!recentSnap.empty && recentSnap.docs[0].id !== entryId) {
-      throw new Error("Only the most recent payment can be edited");
+    if (!recentSnap.empty) {
+      const recentDocs = recentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      recentDocs.sort((a, b) => {
+        const dateDiff = toMillis(b.date) - toMillis(a.date);
+        if (dateDiff !== 0) return dateDiff;
+        const createdDiff = toMillis(b.createdAt) - toMillis(a.createdAt);
+        if (createdDiff !== 0) return createdDiff;
+        return (Number(b.seq) || 0) - (Number(a.seq) || 0);
+      });
+      if (recentDocs[0].id !== entryId) {
+        throw new Error("Only the most recent payment can be edited");
+      }
     }
 
     const personSnap = await transaction.get(personRef);

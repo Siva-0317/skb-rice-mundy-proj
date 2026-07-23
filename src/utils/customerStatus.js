@@ -1,19 +1,5 @@
 import { OVERDUE_DAYS_THRESHOLD } from './constants';
-
-const toDateObject = (dateVal) => {
-  if (!dateVal) return null;
-  if (typeof dateVal.toDate === 'function') {
-    return dateVal.toDate();
-  }
-  if (dateVal instanceof Date) {
-    return dateVal;
-  }
-  if (typeof dateVal.seconds === 'number') {
-    return new Date(dateVal.seconds * 1000);
-  }
-  const parsed = new Date(dateVal);
-  return isNaN(parsed.getTime()) ? null : parsed;
-};
+import { toDateObj as toDateObject } from './dateIST';
 
 export const getCustomerStatus = (customer) => {
   if (!customer) return 'settled';

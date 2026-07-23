@@ -22,6 +22,7 @@ import {
   getCurrentStockReport
 } from '../firebase/reports';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 
 export default function ReportResultPage() {
   const location = useLocation();
@@ -36,7 +37,7 @@ export default function ReportResultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = Number(getISTTodayDateString().slice(0, 4));
 
   const reportsList = [
     { id: "customer-wise-balance", title: "Customer-wise Balance", description: "Outstanding & credit by customer.", icon: Users, slug: "customer-wise-balance" },
@@ -61,12 +62,7 @@ export default function ReportResultPage() {
   const allReportsList = [...reportsList, ...purchaseReportsList];
   const activeReportObj = allReportsList.find(r => r.id === reportType);
 
-  const formatDateDisplay = (dateVal) => {
-    if (!dateVal) return '-';
-    const d = dateVal.toDate ? dateVal.toDate() : new Date(dateVal);
-    if (isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const formatDateDisplay = (dateVal) => formatDateIST(dateVal);
 
   const fetchReport = async () => {
     if (!reportType) return;
@@ -83,7 +79,7 @@ export default function ReportResultPage() {
       } else if (reportType === "total-sales-date-wise") {
         data = await getDateWiseSalesReport({ from: fromDate, to: toDate });
       } else if (reportType === "total-sales-month-wise") {
-        const y = fromDate ? (new Date(fromDate).getFullYear() || currentYear) : currentYear;
+        const y = fromDate ? (new Date(fromDate).getUTCFullYear() || currentYear) : currentYear;
         data = await getMonthWiseSalesReport({ year: y });
       } else if (reportType === "item-wise-sales-data") {
         data = await getItemWiseSalesReport({ from: fromDate, to: toDate });
@@ -243,7 +239,7 @@ export default function ReportResultPage() {
       return "Stock as of now";
     }
     if (reportType === "total-sales-month-wise") {
-      return `Showing monthly data for ${reportData?.year || (fromDate ? new Date(fromDate).getFullYear() : currentYear)}`;
+      return `Showing monthly data for ${reportData?.year || (fromDate ? new Date(fromDate).getUTCFullYear() : currentYear)}`;
     }
     if (fromDate && toDate) {
       return `${formatDateDisplay(fromDate)} – ${formatDateDisplay(toDate)}`;

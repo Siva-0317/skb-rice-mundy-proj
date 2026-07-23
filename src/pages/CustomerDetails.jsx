@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, X, Pencil } from 'lucide-react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { getCustomer, getCustomerLedgerPaginated, recordPayment } from '../firebase/customers';
 import { editLedgerEntry } from '../firebase/ledger';
 import { PAYMENT_MODES } from '../utils/constants';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST } from '../utils/dateIST';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 
 export default function CustomerDetails() {
@@ -112,12 +113,7 @@ export default function CustomerDetails() {
     }
   };
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '-';
-    return new Date(timestamp.toDate()).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    });
-  };
+  const formatDate = (timestamp) => formatDateIST(timestamp);
 
   const startIdx = totalLedgerCount === 0 ? 0 : (currentPage - 1) * 20 + 1;
   const endIdx = Math.min(currentPage * 20, totalLedgerCount);
@@ -130,6 +126,8 @@ export default function CustomerDetails() {
   if (!customer) {
     return <div className="text-center py-10 text-textMuted">Customer not found.</div>;
   }
+
+  const customerBalance = Number(customer.balance) || 0;
 
   return (
     <div className="space-y-6">
@@ -167,11 +165,11 @@ export default function CustomerDetails() {
         <div className="flex flex-col md:items-end gap-3">
           <div className="text-left md:text-right">
             <p className="text-sm font-medium text-textMuted mb-1">Current Balance</p>
-            <p className={`text-3xl font-bold ${customer.balance > 0 ? 'text-debit' : 'text-textMuted'}`}>
-              ₹{customer.balance.toLocaleString('en-IN')}
+            <p className={`text-3xl font-bold ${customerBalance > 0 ? 'text-debit' : 'text-textMuted'}`}>
+              ₹{customerBalance.toLocaleString('en-IN')}
             </p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/sales', { state: { customerId: id } })}
@@ -181,7 +179,7 @@ export default function CustomerDetails() {
             </button>
             <button
               onClick={() => setIsPaymentModalOpen(true)}
-              disabled={customer.balance <= 0}
+              disabled={customerBalance <= 0}
               className="bg-gold text-white px-6 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Record Payment

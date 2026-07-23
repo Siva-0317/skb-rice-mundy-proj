@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, ShoppingBag, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 import { getPurchasesByMonth } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import NewPurchaseModal from '../components/NewPurchaseModal';
 
 const CATEGORY_LABELS = {
@@ -135,8 +136,9 @@ function PurchaseCard({ purchase, formatDate }) {
 }
 
 export default function PurchasePage() {
-  const now = new Date();
-  const [selectedMonthDate, setSelectedMonthDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
+  // "Now" here means today in IST, regardless of the viewing device's own timezone.
+  const [istYear, istMonthIdx] = getISTTodayDateString().split('-').map(Number).map((n, i) => i === 1 ? n - 1 : n);
+  const [selectedMonthDate, setSelectedMonthDate] = useState(new Date(istYear, istMonthIdx, 1));
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -163,19 +165,14 @@ export default function PurchasePage() {
     setSelectedMonthDate(newDate);
   };
 
-  const formatDate = (dateVal) => {
-    if (!dateVal) return '—';
-    const d = typeof dateVal === 'string' ? new Date(dateVal) : (dateVal.toDate ? dateVal.toDate() : new Date(dateVal));
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const formatDate = (dateVal) => dateVal ? formatDateIST(dateVal) : '—';
 
   const curYear = selectedMonthDate.getFullYear();
   const curMonthIdx = selectedMonthDate.getMonth();
   const prevDate = new Date(curYear, curMonthIdx - 1, 1);
   const nextDate = new Date(curYear, curMonthIdx + 1, 1);
-  const isCurrentOrFuture = (curYear > now.getFullYear()) ||
-    (curYear === now.getFullYear() && curMonthIdx >= now.getMonth());
+  const isCurrentOrFuture = (curYear > istYear) ||
+    (curYear === istYear && curMonthIdx >= istMonthIdx);
 
   return (
     <div className="space-y-6 pb-12">
@@ -194,7 +191,7 @@ export default function PurchasePage() {
           className="bg-gold hover:bg-gold/90 text-white font-medium py-3 px-5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap"
         >
           <Plus className="w-4 h-4" />
-          + New Purchase
+          New Purchase
         </button>
       </div>
 
@@ -226,17 +223,6 @@ export default function PurchasePage() {
             {FULL_MONTH_NAMES[nextDate.getMonth()]} →
           </button>
         </div>
-
-        {/* Column headers — shown once above the cards */}
-        {!loading && purchases.length > 0 && (
-          <div className="hidden sm:grid grid-cols-[2fr_3fr_1fr_1.2fr_1.2fr] gap-x-3 px-5 pt-3 pb-1.5 text-sm uppercase tracking-wider font-semibold text-textMuted border-b border-border/50">
-            <span>Category</span>
-            <span>Item</span>
-            <span className="text-right">Bags</span>
-            <span className="text-right">Cost/Bag (₹)</span>
-            <span className="text-right">Total (₹)</span>
-          </div>
-        )}
 
         {/* Cards */}
         <div className="p-4">

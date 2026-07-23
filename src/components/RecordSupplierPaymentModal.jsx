@@ -3,9 +3,10 @@ import { X } from 'lucide-react';
 import { recordSupplierPayment } from '../firebase/suppliers';
 import { PAYMENT_MODES } from '../utils/constants';
 import { useToast } from '../context/ToastContext';
+import { getISTTodayDateString } from '../utils/dateIST';
 
 export default function RecordSupplierPaymentModal({ isOpen, onClose, onSuccess, supplierId, supplierName, supplierBalance }) {
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(() => getISTTodayDateString());
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState('Cash');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -15,7 +16,7 @@ export default function RecordSupplierPaymentModal({ isOpen, onClose, onSuccess,
     if (isOpen) {
       setAmount('');
       setMode('Cash');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentDate(getISTTodayDateString());
     }
   }, [isOpen, supplierId]);
 

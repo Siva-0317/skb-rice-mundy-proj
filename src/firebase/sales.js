@@ -1,5 +1,6 @@
 import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
+import { sortByDateThenCreatedAt } from "../utils/dateIST";
 
 export const getNextBillNo = async () => {
   // A simple read without transaction, just for preview
@@ -12,13 +13,14 @@ export const getNextBillNo = async () => {
 export const getRecentSales = async () => {
   const q = query(collection(db, "sales"), orderBy("date", "desc"), limit(10));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const sales = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return sortByDateThenCreatedAt(sales);
 };
 
 export const getSalesByMonth = async (year, monthIdx) => {
-  const startObj = new Date(year, monthIdx, 1, 0, 0, 0, 0);
-  const endObj = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999);
-  
+  const startObj = new Date(Date.UTC(year, monthIdx, 1, 0, 0, 0, 0));
+  const endObj = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59, 999));
+
   const q = query(
     collection(db, "sales"),
     where("date", ">=", startObj),
@@ -26,7 +28,8 @@ export const getSalesByMonth = async (year, monthIdx) => {
     orderBy("date", "desc")
   );
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const sales = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return sortByDateThenCreatedAt(sales);
 };
 
 export const createSale = async ({ customerId, customerName, date, advance, remarks, rows }) => {

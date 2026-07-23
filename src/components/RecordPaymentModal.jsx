@@ -3,11 +3,12 @@ import { X } from 'lucide-react';
 import { recordPayment, getCustomers } from '../firebase/customers';
 import { PAYMENT_MODES } from '../utils/constants';
 import { useToast } from '../context/ToastContext';
+import { getISTTodayDateString } from '../utils/dateIST';
 
 export default function RecordPaymentModal({ isOpen, onClose, onSuccess, customers = [], preselectedCustomerId = '' }) {
   const [customerList, setCustomerList] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(() => getISTTodayDateString());
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,7 +20,7 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess, custome
       setSelectedCustomerId(preselectedCustomerId || '');
       setPaymentAmount('');
       setPaymentMode('Cash');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentDate(getISTTodayDateString());
 
       if (customers && customers.length > 0) {
         setCustomerList(customers);

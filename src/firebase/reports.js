@@ -1,23 +1,21 @@
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "./config";
 import { getCustomerStatus } from "../utils/customerStatus";
+import { businessDayStartUtc, businessDayEndUtc, getISTTodayAsUtcMidnight, getISTDateString } from "../utils/dateIST";
 
-// Helper to convert date input to Firestore range
-const getRangeQuery = (from, to) => {
-  const fromDate = new Date(from);
-  fromDate.setHours(0, 0, 0, 0);
-  const toDate = new Date(to);
-  toDate.setHours(23, 59, 59, 999);
-  return { fromDate, toDate };
-};
+// Helper to convert date-only input strings ('YYYY-MM-DD') to a Firestore range. These
+// map straight to UTC-midnight instants — matching exactly how business dates (sale.date,
+// purchase.date) are stored — with no local-timezone-dependent mutation involved.
+const getRangeQuery = (from, to) => ({
+  fromDate: businessDayStartUtc(from),
+  toDate: businessDayEndUtc(to)
+});
 
 // CARD 1: Customer-wise Balance
 export const getCustomerWiseBalanceReport = async ({ from, to }) => {
   const snap = await getDocs(collection(db, "customers"));
-  const fromDate = from ? new Date(from) : null;
-  const toDate = to ? new Date(to) : null;
-  if (fromDate) fromDate.setHours(0, 0, 0, 0);
-  if (toDate) toDate.setHours(23, 59, 59, 999);
+  const fromDate = from ? businessDayStartUtc(from) : null;
+  const toDate = to ? businessDayEndUtc(to) : null;
 
   let totalOutstanding = 0;
   const rows = [];
@@ -204,9 +202,9 @@ export const getDateWiseSalesReport = async ({ from, to }) => {
 
 // CARD 5: Total Sales (Month-wise)
 export const getMonthWiseSalesReport = async ({ year }) => {
-  const targetYear = year || new Date().getFullYear();
-  const fromDate = new Date(targetYear, 0, 1, 0, 0, 0, 0);
-  const toDate = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+  const targetYear = year || Number(getISTDateString(new Date()).slice(0, 4));
+  const fromDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+  const toDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
 
   const q = query(
     collection(db, "sales"),
@@ -234,7 +232,7 @@ export const getMonthWiseSalesReport = async ({ year }) => {
     const sale = docSnap.data();
     const d = sale.date?.toDate ? sale.date.toDate() : new Date(sale.date);
     if (isNaN(d.getTime())) return;
-    const mIdx = d.getMonth();
+    const mIdx = d.getUTCMonth();
     if (mIdx >= 0 && mIdx < 12) {
       const entry = monthEntries[mIdx];
       entry.bills += 1;
@@ -400,7 +398,6 @@ export const getpurchasesReport = async ({ from, to }) => {
 
   return { rows, summary };
 };
-export const getSupplierWisePurchasesReport = getpurchasesReport;
 
 // CARD 2: Category-wise Purchase vs Sale (P&L)
 export const getCategoryPnL = async ({ from, to }) => {
@@ -716,10 +713,9 @@ export const getQuickStats = async () => {
     }
   });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tonight = new Date();
-  tonight.setHours(23, 59, 59, 999);
+  const today = getISTTodayAsUtcMidnight();
+  const tonight = new Date(today);
+  tonight.setUTCHours(23, 59, 59, 999);
 
   let todaysSales = 0;
   let todaysBills = 0;
