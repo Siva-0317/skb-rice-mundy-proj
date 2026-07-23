@@ -1,21 +1,25 @@
 import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from "firebase/firestore";
 import { db } from "./config";
 import { getCustomerStatus } from "../utils/customerStatus";
+import { getISTTodayAsUtcMidnight, toMillis, toDateObj } from "../utils/dateIST";
+import { LOW_STOCK_THRESHOLD } from "../utils/constants";
 
-const LOW_STOCK_THRESHOLD = 15;
+const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const getWeekSales = async () => {
-  const today = new Date();
-  today.setHours(23, 59, 59, 999);
-  
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  sevenDaysAgo.setHours(0, 0, 0, 0);
+  // Everything below stays in one UTC-midnight frame anchored to "today in IST" — this
+  // is what keeps the chart correct regardless of the viewing device's own timezone.
+  const todayAnchor = getISTTodayAsUtcMidnight();
+  const sevenDaysAgo = new Date(todayAnchor);
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
+
+  const rangeEnd = new Date(todayAnchor);
+  rangeEnd.setUTCHours(23, 59, 59, 999);
 
   const q = query(
     collection(db, "sales"),
     where("date", ">=", sevenDaysAgo),
-    where("date", "<=", today)
+    where("date", "<=", rangeEnd)
   );
 
   const snapshot = await getDocs(q);
@@ -23,20 +27,21 @@ export const getWeekSales = async () => {
 
   // Initialize all 7 days with 0
   const daysMap = {};
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
+
   for (let i = 0; i < 7; i++) {
     const d = new Date(sevenDaysAgo);
-    d.setDate(d.getDate() + i);
-    daysMap[d.toISOString().split('T')[0]] = {
-      day: dayNames[d.getDay()],
+    d.setUTCDate(d.getUTCDate() + i);
+    const key = d.toISOString().split('T')[0];
+    daysMap[key] = {
+      day: dayNames[d.getUTCDay()],
       total: 0,
-      fullDate: d.toISOString().split('T')[0]
+      fullDate: key
     };
   }
 
   sales.forEach(sale => {
-    const d = sale.date.toDate ? sale.date.toDate() : new Date(sale.date);
+    const d = toDateObj(sale.date);
+    if (!d) return;
     const dateStr = d.toISOString().split('T')[0];
     if (daysMap[dateStr]) {
       daysMap[dateStr].total += (sale.totalAmount || 0);
@@ -47,11 +52,9 @@ export const getWeekSales = async () => {
 };
 
 export const getTodayStats = async () => {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const todayStart = getISTTodayAsUtcMidnight();
+  const todayEnd = new Date(todayStart);
+  todayEnd.setUTCHours(23, 59, 59, 999);
 
   // Today Sales
   const salesQ = query(collection(db, "sales"), where("date", ">=", todayStart), where("date", "<=", todayEnd));
@@ -122,9 +125,19 @@ export const getTodayStats = async () => {
 };
 
 export const getDashboardRecentSales = async (limitCount = 7) => {
-  const q = query(collection(db, "sales"), orderBy("date", "desc"), firestoreLimit(limitCount));
+  // Same-day sales all share one `date` value (UTC midnight of that business day), so
+  // Firestore's orderBy("date") alone leaves them in an arbitrary tie-break order, not
+  // creation order. Over-fetch a buffer past limitCount so a client-side sort by
+  // createdAt can correctly re-rank same-day ties before truncating to limitCount.
+  const q = query(collection(db, "sales"), orderBy("date", "desc"), firestoreLimit(limitCount + 15));
   const snap = await getDocs(q);
-  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const sales = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  sales.sort((a, b) => {
+    const dateDiff = toMillis(b.date) - toMillis(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return toMillis(b.createdAt) - toMillis(a.createdAt);
+  });
+  return sales.slice(0, limitCount);
 };
 
 export const getStockByVariety = async (limitCount = 8) => {

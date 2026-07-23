@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { getGlobalLedger } from '../firebase/customers';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST } from '../utils/dateIST';
 
 const PAGE_SIZE = 20;
 
@@ -30,11 +31,7 @@ const dayStr = (timestamp) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 };
 
-const formatDate = (timestamp) => {
-  const d = toDateObj(timestamp);
-  if (!d) return '-';
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
-};
+const formatDate = (timestamp) => formatDateIST(timestamp);
 
 export default function Ledger() {
   const navigate = useNavigate();

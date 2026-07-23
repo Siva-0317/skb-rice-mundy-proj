@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCategories, getItems, adjustStock, updateItem } from '../firebase/items';
+import { getCategories, getItems, adjustStock } from '../firebase/items';
 import { Pencil, ChevronDown, ChevronRight, X, AlertTriangle, Package, Boxes, AlertCircle, Plus } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST } from '../utils/dateIST';
+import { LOW_STOCK_THRESHOLD } from '../utils/constants';
 import AddItemModal from '../components/AddItemModal';
-
-const LOW_STOCK_THRESHOLD = 15;
 
 export default function Inventory() {
   const [categories, setCategories] = useState([]);
@@ -121,14 +121,10 @@ export default function Inventory() {
   const totalBags = items.reduce((sum, item) => sum + (Number(item.stock) || 0), 0);
   const lowStockItemsCount = items.filter(i => i.stock < LOW_STOCK_THRESHOLD).length;
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '-';
-    const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  };
+  const formatDate = (timestamp) => formatDateIST(timestamp, {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
   if (loading && items.length === 0) {
     return <div className="flex items-center justify-center h-full text-textMuted py-8">Loading inventory...</div>;

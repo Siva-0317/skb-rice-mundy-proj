@@ -6,6 +6,7 @@ import { getItems } from '../firebase/items';
 import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
 import { AuthContext } from '../context/AuthContext';
+import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import AddCustomerModal from '../components/AddCustomerModal';
 import InvoiceRowsTable from '../components/InvoiceRowsTable';
 
@@ -31,13 +32,14 @@ export default function Sales() {
   const { showToast } = useToast();
 
   const [selectedMonthDate, setSelectedMonthDate] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    // "Today" here means today in IST, regardless of the viewing device's own timezone.
+    const [y, m] = getISTTodayDateString().split('-').map(Number);
+    return new Date(y, m - 1, 1);
   });
 
   // Form State
   const [customerId, setCustomerId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getISTTodayDateString());
   const [advance, setAdvance] = useState('');
   const [remarks, setRemarks] = useState('');
   const [rows, setRows] = useState([
@@ -65,11 +67,11 @@ export default function Sales() {
 
   const loadData = async () => {
     try {
-      const initDate = new Date();
+      const [initYear, initMonthIdx] = getISTTodayDateString().split('-').map(Number).map((n, i) => i === 1 ? n - 1 : n);
       const [custData, itemData, recentData, billNo] = await Promise.all([
         getCustomers(),
         getItems(),
-        getSalesByMonth(initDate.getFullYear(), initDate.getMonth()),
+        getSalesByMonth(initYear, initMonthIdx),
         getNextBillNo()
       ]);
       setCustomers(custData);
@@ -216,7 +218,7 @@ export default function Sales() {
     setEditingBillNo(sale.billNo);
     setCustomerId(sale.customerId);
     
-    let formattedDate = new Date().toISOString().split('T')[0];
+    let formattedDate = getISTTodayDateString();
     if (sale.date) {
       const d = typeof sale.date === 'string' ? new Date(sale.date) : (sale.date.toDate ? sale.date.toDate() : new Date(sale.date));
       if (!isNaN(d.getTime())) {
@@ -257,14 +259,14 @@ export default function Sales() {
     setPaymentMode('Cash');
     setRowErrors({});
     setRowWarnings({});
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
     setEditingSaleId(null);
     setEditingBillNo('');
     setCustomerId('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getISTTodayDateString());
     setAdvance('');
     setRemarks('');
     setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
@@ -338,7 +340,7 @@ export default function Sales() {
         setEditingSaleId(null);
         setEditingBillNo('');
         setCustomerId('');
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(getISTTodayDateString());
         setAdvance('');
         setRemarks('');
         setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
@@ -364,7 +366,7 @@ export default function Sales() {
         
         // Reset Form
         setCustomerId('');
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(getISTTodayDateString());
         setAdvance('');
         setRemarks('');
         setRows([{ id: Date.now(), categoryKey: '', itemId: '', item: null, bags: '', bagKg: '', rate: '', mrp: '', priceField: 'mrp' }]);
@@ -399,12 +401,7 @@ export default function Sales() {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    // Handle both string dates and firestore timestamps
-    const d = typeof dateStr === 'string' ? new Date(dateStr) : new Date(dateStr.toDate());
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const formatDate = (dateStr) => formatDateIST(dateStr);
 
   if (loading) return <div className="p-8 text-center text-textMuted">Loading...</div>;
 
@@ -608,9 +605,10 @@ export default function Sales() {
           const curMonthIdx = selectedMonthDate.getMonth();
           const prevDate = new Date(curYear, curMonthIdx - 1, 1);
           const nextDate = new Date(curYear, curMonthIdx + 1, 1);
-          const now = new Date();
-          const isCurrentOrFutureMonth = (curYear > now.getFullYear()) ||
-            (curYear === now.getFullYear() && curMonthIdx >= now.getMonth());
+          // "Now" here means today in IST, regardless of the viewing device's own timezone.
+          const [nowYear, nowMonthIdx] = getISTTodayDateString().split('-').map(Number).map((n, i) => i === 1 ? n - 1 : n);
+          const isCurrentOrFutureMonth = (curYear > nowYear) ||
+            (curYear === nowYear && curMonthIdx >= nowMonthIdx);
 
           return (
             <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { getQuickStats } from '../firebase/reports';
+import { getISTDateString, getISTTodayDateString, getISTTodayAsUtcMidnight } from '../utils/dateIST';
 
 export default function Reports() {
   const navigate = useNavigate();
@@ -21,20 +22,18 @@ export default function Reports() {
       .finally(() => setStatsLoading(false));
   }, []);
 
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonthIdx = today.getMonth();
+  // "Today" here means today in IST, regardless of the viewing device's own timezone.
+  const [currentYear, currentMonthIdx] = getISTTodayDateString().split('-').map(Number).map((n, i) => i === 1 ? n - 1 : n);
 
-  // Helper to format Date -> YYYY-MM-DD string
-  const toISODate = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toISODate = (year, monthIdx, day) => `${year}-${pad2(monthIdx + 1)}-${pad2(day)}`;
+
+  const getFirstDayOfMonth = (year, monthIdx) => toISODate(year, monthIdx, 1);
+  const getLastDayOfMonth = (year, monthIdx) => {
+    // Day-count math only (not a real instant) — UTC avoids any local-timezone shift.
+    const lastDay = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
+    return toISODate(year, monthIdx, lastDay);
   };
-
-  const getFirstDayOfMonth = (year, monthIdx) => new Date(year, monthIdx, 1);
-  const getLastDayOfMonth = (year, monthIdx) => new Date(year, monthIdx + 1, 0);
 
   // Generate month options from Jan 2026 up to current month
   const monthNames = [
@@ -64,8 +63,8 @@ export default function Reports() {
   };
 
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthOpt.value);
-  const [fromDate, setFromDate] = useState(toISODate(getFirstDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx)));
-  const [toDate, setToDate] = useState(toISODate(getLastDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx)));
+  const [fromDate, setFromDate] = useState(getFirstDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx));
+  const [toDate, setToDate] = useState(getLastDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx));
   const [activePill, setActivePill] = useState("This Month");
 
   const handleMonthChange = (val) => {
@@ -75,29 +74,31 @@ export default function Reports() {
     const [yStr, mStr] = val.split('-');
     const y = Number(yStr);
     const m = Number(mStr);
-    setFromDate(toISODate(getFirstDayOfMonth(y, m)));
-    setToDate(toISODate(getLastDayOfMonth(y, m)));
+    setFromDate(getFirstDayOfMonth(y, m));
+    setToDate(getLastDayOfMonth(y, m));
   };
 
   const handlePillClick = (pill) => {
     setActivePill(pill);
-    const now = new Date();
     if (pill === "Today") {
-      const dStr = toISODate(now);
+      const dStr = getISTTodayDateString();
       setFromDate(dStr);
       setToDate(dStr);
       setSelectedMonth("");
     } else if (pill === "This Week") {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
-      const startOfWeek = new Date(now.setDate(diff));
-      setFromDate(toISODate(startOfWeek));
-      setToDate(toISODate(new Date()));
+      // Monday-start week, computed on the IST calendar day (not the device's local day).
+      const todayAnchor = getISTTodayAsUtcMidnight();
+      const day = todayAnchor.getUTCDay();
+      const diff = todayAnchor.getUTCDate() - day + (day === 0 ? -6 : 1);
+      const startOfWeek = new Date(todayAnchor);
+      startOfWeek.setUTCDate(diff);
+      setFromDate(getISTDateString(startOfWeek));
+      setToDate(getISTTodayDateString());
       setSelectedMonth("");
     } else if (pill === "This Month" || pill === "Clear filters") {
       setSelectedMonth(defaultMonthOpt.value);
-      setFromDate(toISODate(getFirstDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx)));
-      setToDate(toISODate(getLastDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx)));
+      setFromDate(getFirstDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx));
+      setToDate(getLastDayOfMonth(defaultMonthOpt.year, defaultMonthOpt.monthIdx));
       if (pill === "Clear filters") setActivePill("This Month");
     }
   };
@@ -260,7 +261,7 @@ export default function Reports() {
             {/* TILE 2 */}
             <div
               onClick={() => {
-                const nowStr = toISODate(new Date());
+                const nowStr = getISTTodayDateString();
                 navigate('/reports/result', {
                   state: {
                     reportType: 'total-sales-date-wise',

@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
 import { db } from "./config";
+import { toMillis } from "../utils/dateIST";
 
 export const getCustomers = async () => {
   const q = query(collection(db, "customers"), orderBy("name", "asc"));
@@ -18,15 +19,6 @@ export const getCustomerLedger = async (id) => {
   const q = query(collection(db, "customers", id, "ledger"), orderBy("date", "desc"));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-
-const toMillis = (val) => {
-  if (!val) return 0;
-  if (typeof val.toMillis === 'function') return val.toMillis();
-  if (typeof val.toDate === 'function') return val.toDate().getTime();
-  if (typeof val.seconds === 'number') return val.seconds * 1000;
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
 };
 
 // Ledger entries are sorted by business date first (most recent day on top, like a
@@ -133,7 +125,7 @@ export const recordPayment = async (customerId, paymentData) => {
   const customDate = typeof paymentData === 'object' && paymentData !== null && paymentData.date ? new Date(paymentData.date) : null;
 
   const numAmount = Number(amount);
-  if (numAmount <= 0) throw new Error("Payment amount must be greater than 0");
+  if (isNaN(numAmount) || numAmount <= 0) throw new Error("Payment amount must be greater than 0");
 
   // Auto-built description — no free text
   const desc = `Payment received · ${mode}`;

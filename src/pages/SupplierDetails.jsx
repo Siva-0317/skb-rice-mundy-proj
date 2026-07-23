@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Phone } from 'lucide-react';
 import { getSupplier, getSupplierLedgerPaginated } from '../firebase/suppliers';
 import { getSupplierPurchases } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
+import { formatDateIST } from '../utils/dateIST';
 import RecordSupplierPaymentModal from '../components/RecordSupplierPaymentModal';
 
 const CATEGORY_LABELS = {
@@ -26,41 +27,16 @@ export default function SupplierDetails() {
   const [activeTab, setActiveTab] = useState('ledger');
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageCursors, setPageCursors] = useState([]);
   const [totalLedgerCount, setTotalLedgerCount] = useState(0);
-  const [firstDoc, setFirstDoc] = useState(null);
-  const [lastDoc, setLastDoc] = useState(null);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  const fetchLedgerPage = async (pageTarget, direction = 'initial') => {
+  const fetchLedgerPage = async (pageTarget = 1) => {
     try {
-      let result;
-      if (direction === 'next') {
-        result = await getSupplierLedgerPaginated(id, { pageSize: 20, direction: 'next', lastDoc });
-        if (result.entries.length > 0) {
-          setPageCursors(prev => {
-            const next = [...prev];
-            next[currentPage - 1] = firstDoc;
-            return next;
-          });
-          setCurrentPage(prev => prev + 1);
-        }
-      } else if (direction === 'prev') {
-        const targetCursor = pageCursors[pageTarget - 1] || null;
-        result = await getSupplierLedgerPaginated(id, { pageSize: 20, direction: 'prev', firstDoc, targetCursor });
-        if (result.entries.length > 0) {
-          setCurrentPage(pageTarget);
-        }
-      } else {
-        result = await getSupplierLedgerPaginated(id, { pageSize: 20 });
-        setCurrentPage(1);
-        setPageCursors([]);
-      }
+      const result = await getSupplierLedgerPaginated(id, { pageSize: 20, page: pageTarget });
       setLedger(result.entries);
-      setFirstDoc(result.firstDoc);
-      setLastDoc(result.lastDoc);
       setTotalLedgerCount(result.totalCount);
+      setCurrentPage(pageTarget);
     } catch (err) {
       console.error("Error loading supplier ledger page:", err);
     }
@@ -75,7 +51,7 @@ export default function SupplierDetails() {
       ]);
       setSupplier(suppData);
       setPurchases(purchasesData || []);
-      await fetchLedgerPage(1, 'initial');
+      await fetchLedgerPage(1);
     } catch (error) {
       console.error("Error loading supplier details:", error);
       showToast("Failed to load supplier details", "error");
@@ -88,12 +64,7 @@ export default function SupplierDetails() {
     fetchSupplierData();
   }, [id]);
 
-  const formatDate = (dateVal) => {
-    if (!dateVal) return '-';
-    const d = typeof dateVal === 'string' ? new Date(dateVal) : (dateVal.toDate ? dateVal.toDate() : new Date(dateVal));
-    if (isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  const formatDate = (dateVal) => formatDateIST(dateVal);
 
   const startIdx = totalLedgerCount === 0 ? 0 : (currentPage - 1) * 20 + 1;
   const endIdx = Math.min(currentPage * 20, totalLedgerCount);
@@ -226,7 +197,7 @@ export default function SupplierDetails() {
               </table>
               <div className="flex items-center justify-between p-4 border-t border-border bg-panel/30">
                 <button
-                  onClick={() => fetchLedgerPage(currentPage - 1, 'prev')}
+                  onClick={() => fetchLedgerPage(currentPage - 1)}
                   disabled={currentPage <= 1}
                   className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-white text-textDark hover:bg-gold/10 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                 >
@@ -236,7 +207,7 @@ export default function SupplierDetails() {
                   Showing {startIdx}–{endIdx} of {totalLedgerCount} entries
                 </span>
                 <button
-                  onClick={() => fetchLedgerPage(currentPage + 1, 'next')}
+                  onClick={() => fetchLedgerPage(currentPage + 1)}
                   disabled={isLastPage}
                   className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-white text-textDark hover:bg-gold/10 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                 >

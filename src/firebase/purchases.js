@@ -1,15 +1,17 @@
 import { doc, collection, getDocs, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
+import { getISTTodayDateString, sortByDateThenCreatedAt } from "../utils/dateIST";
 
 export const getRecentPurchases = async () => {
   const q = query(collection(db, "purchases"), orderBy("date", "desc"), limit(15));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const purchases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return sortByDateThenCreatedAt(purchases);
 };
 
 export const getPurchasesByMonth = async (year, monthIdx) => {
-  const startObj = new Date(year, monthIdx, 1, 0, 0, 0, 0);
-  const endObj = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999);
+  const startObj = new Date(Date.UTC(year, monthIdx, 1, 0, 0, 0, 0));
+  const endObj = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59, 999));
   const q = query(
     collection(db, "purchases"),
     where("date", ">=", startObj),
@@ -17,18 +19,15 @@ export const getPurchasesByMonth = async (year, monthIdx) => {
     orderBy("date", "desc")
   );
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const purchases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return sortByDateThenCreatedAt(purchases);
 };
 
 export const getSupplierPurchases = async (supplierId) => {
   const q = query(collection(db, "purchases"), where("supplierId", "==", supplierId));
   const snap = await getDocs(q);
   const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return list.sort((a, b) => {
-    const da = a.date?.toDate ? a.date.toDate() : new Date(a.date || 0);
-    const db = b.date?.toDate ? b.date.toDate() : new Date(b.date || 0);
-    return db - da;
-  });
+  return sortByDateThenCreatedAt(list);
 };
 
 export const createPurchase = async ({
@@ -46,7 +45,7 @@ export const createPurchase = async ({
   const numBags = Number(bags) || 0;
   const numCostPerBag = Number(costPerBag) || 0;
   const total = numBags * numCostPerBag;
-  const dateObj = date ? new Date(date) : new Date();
+  const dateObj = new Date(date || getISTTodayDateString());
 
   const purchaseRef = doc(collection(db, "purchases"));
   const counterRef = doc(db, "counters", "billCounters");

@@ -1,5 +1,6 @@
-import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, limit, limitToLast, startAfter, startAt, endBefore, where } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
 import { db } from "./config";
+import { toMillis } from "../utils/dateIST";
 
 export const getSuppliers = async () => {
   const q = query(collection(db, "suppliers"), orderBy("name", "asc"));
@@ -20,41 +21,25 @@ export const getSupplierLedger = async (id) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const getSupplierLedgerPaginated = async (id, {
-  pageSize = 20,
-  direction = 'initial',
-  firstDoc = null,
-  lastDoc = null,
-  targetCursor = null
-} = {}) => {
+// Ledger entries are sorted by business date first (most recent day on top, like a
+// bank statement), then by actual recording time as a tiebreaker for same-day entries —
+// mirrors the fix applied to the customer ledger (see firebase/customers.js).
+export const getSupplierLedgerPaginated = async (id, { pageSize = 20, page = 1 } = {}) => {
   const ledgerColRef = collection(db, "suppliers", id, "ledger");
-  const allSnap = await getDocs(query(ledgerColRef));
-  const totalCount = allSnap.size;
-
-  const constraints = [orderBy("date", "desc")];
-  if (direction === 'next' && lastDoc) {
-    constraints.push(startAfter(lastDoc));
-    constraints.push(limit(pageSize));
-  } else if (direction === 'prev' && targetCursor) {
-    constraints.push(startAt(targetCursor));
-    constraints.push(limit(pageSize));
-  } else if (direction === 'prev' && firstDoc && !targetCursor) {
-    constraints.push(endBefore(firstDoc));
-    constraints.push(limitToLast(pageSize));
-  } else {
-    constraints.push(limit(pageSize));
-  }
-
-  const q = query(ledgerColRef, ...constraints);
-  const snap = await getDocs(q);
+  const snap = await getDocs(query(ledgerColRef));
   const entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  return {
-    entries,
-    firstDoc: snap.docs.length > 0 ? snap.docs[0] : null,
-    lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
-    totalCount
-  };
+  entries.sort((a, b) => {
+    const dateDiff = toMillis(b.date) - toMillis(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return toMillis(b.createdAt) - toMillis(a.createdAt);
+  });
+
+  const totalCount = entries.length;
+  const start = (page - 1) * pageSize;
+  const pageEntries = entries.slice(start, start + pageSize);
+
+  return { entries: pageEntries, totalCount };
 };
 
 export const addSupplier = async ({ name, phone, location = '', supplyCategories = [], notes = '', categories = '' }) => {
@@ -94,7 +79,7 @@ export const recordSupplierPayment = async (supplierId, paymentData) => {
   const dateVal = typeof paymentData === 'object' && paymentData !== null && paymentData.date ? new Date(paymentData.date) : null;
 
   const numAmount = Number(amount);
-  if (numAmount <= 0) throw new Error("Payment amount must be greater than 0");
+  if (isNaN(numAmount) || numAmount <= 0) throw new Error("Payment amount must be greater than 0");
 
   // Auto-built description — no free text
   const desc = `Payment made · ${mode}`;

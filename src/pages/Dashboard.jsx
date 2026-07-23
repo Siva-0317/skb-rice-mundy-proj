@@ -4,6 +4,8 @@ import { IndianRupee, Users, AlertTriangle, TrendingUp, Package } from 'lucide-r
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getWeekSales, getTodayStats, getDashboardRecentSales } from '../firebase/dashboard';
 import { useToast } from '../context/ToastContext';
+import { formatRelativeDateIST } from '../utils/dateIST';
+import { LOW_STOCK_THRESHOLD } from '../utils/constants';
 import NewPurchaseModal from '../components/NewPurchaseModal';
 
 export default function Dashboard() {
@@ -49,17 +51,7 @@ export default function Dashboard() {
     fetchDashboardData();
   }, []);
 
-  const formatRelativeDate = (dateVal) => {
-    if (!dateVal) return '-';
-    const d = typeof dateVal === 'string' ? new Date(dateVal) : (dateVal.toDate ? dateVal.toDate() : new Date(dateVal));
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (d.toDateString() === today.toDateString()) return 'Today';
-    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-  };
+  const formatRelativeDate = (dateVal) => formatRelativeDateIST(dateVal);
 
   const formatCurrency = (amount) => {
     return '₹' + (amount || 0).toLocaleString('en-IN');
@@ -133,9 +125,9 @@ export default function Dashboard() {
     .slice(0, 8);
   const maxStockBags = topStockItems[0]?.bags || 1;
 
-  // Critically Low Stock Item (< 15 bags)
+  // Critically Low Stock Item
   const lowStockItemsList = (stats.items || [])
-    .filter(i => Number(i.stock) < 15)
+    .filter(i => Number(i.stock) < LOW_STOCK_THRESHOLD)
     .map(i => ({
       ...i,
       bagsAmount: Number(i.stock || 0)
@@ -201,7 +193,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="h-[260px] w-full flex-1">
+          <div className="h-[260px] w-full shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={weekSales} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
@@ -210,17 +202,18 @@ export default function Dashboard() {
                     <stop offset="95%" stopColor="#FAF6EF" stopOpacity={0.05}/>
                   </linearGradient>
                 </defs>
-                <XAxis 
-                  dataKey="day" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="day"
+                  axisLine={false}
+                  tickLine={false}
+                  interval={0}
                   tick={<CustomXAxisTick />}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fill: '#7A5C3A', fontSize: 12 }} 
-                  tickFormatter={(value) => `₹${value / 1000}k`}
+                  tickFormatter={(value) => value >= 1000 ? `₹${(value / 1000).toLocaleString('en-IN')}k` : `₹${value}`}
                 />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#C8912A', strokeWidth: 1, strokeDasharray: '3 3' }} />
                 <Area 

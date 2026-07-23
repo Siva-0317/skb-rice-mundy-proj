@@ -4,6 +4,7 @@ import { getSuppliers } from '../firebase/suppliers';
 import { getItems } from '../firebase/items';
 import { createPurchase } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
+import { getISTTodayDateString } from '../utils/dateIST';
 import AddSupplierModal from './AddSupplierModal';
 
 const CATEGORIES = [
@@ -25,7 +26,7 @@ export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
   const [itemId, setItemId] = useState('');
   const [bags, setBags] = useState('');
   const [costPerBag, setCostPerBag] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => getISTTodayDateString());
   const [notes, setNotes] = useState('');
 
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
