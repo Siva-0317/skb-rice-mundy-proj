@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, where, writeBatch } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
 
@@ -92,11 +92,27 @@ export const getGlobalLedger = async () => {
 export const addCustomer = async ({ name, mobile, openingBalance }) => {
   const numBalance = Number(openingBalance) || 0;
   const cleanMobile = (mobile !== undefined && mobile !== null) ? String(mobile).trim() : '';
+  const cleanName = name.trim();
+
+  // Check for duplicates
+  const nameQuery = query(collection(db, "customers"), where("name", "==", cleanName));
+  const nameSnap = await getDocs(nameQuery);
+  if (!nameSnap.empty) {
+    throw new Error("Customer with this name already exists.");
+  }
+
+  if (cleanMobile) {
+    const mobileQuery = query(collection(db, "customers"), where("mobile", "==", cleanMobile));
+    const mobileSnap = await getDocs(mobileQuery);
+    if (!mobileSnap.empty) {
+      throw new Error("Customer with this mobile already exists.");
+    }
+  }
   
   const customerRef = doc(collection(db, "customers"));
   
   await setDoc(customerRef, {
-    name,
+    name: cleanName,
     mobile: cleanMobile,
     balance: numBalance,
     txnCount: numBalance > 0 ? 1 : 0,
@@ -118,6 +134,54 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
 
   return customerRef.id;
 };
+
+export const updateCustomer = async (id, { name, mobile }) => {
+  const cleanMobile = (mobile !== undefined && mobile !== null) ? String(mobile).trim() : '';
+  const cleanName = name.trim();
+
+  // Check for duplicates excluding current customer
+  const nameQuery = query(collection(db, "customers"), where("name", "==", cleanName));
+  const nameSnap = await getDocs(nameQuery);
+  const duplicateName = nameSnap.docs.find(doc => doc.id !== id);
+  if (duplicateName) {
+    throw new Error("Customer with this name already exists.");
+  }
+
+  if (cleanMobile) {
+    const mobileQuery = query(collection(db, "customers"), where("mobile", "==", cleanMobile));
+    const mobileSnap = await getDocs(mobileQuery);
+    const duplicateMobile = mobileSnap.docs.find(doc => doc.id !== id);
+    if (duplicateMobile) {
+      throw new Error("Customer with this mobile already exists.");
+    }
+  }
+
+  const customerRef = doc(db, "customers", id);
+  const customerSnap = await getDoc(customerRef);
+  if (!customerSnap.exists()) throw new Error("Customer not found");
+  
+  const oldName = customerSnap.data().name;
+
+  await setDoc(customerRef, {
+    name: cleanName,
+    mobile: cleanMobile,
+  }, { merge: true });
+
+  if (oldName !== cleanName) {
+    // Update all sales for this customer
+    const salesQ = query(collection(db, "sales"), where("customerId", "==", id));
+    const salesSnap = await getDocs(salesQ);
+    
+    if (!salesSnap.empty) {
+      const batch = writeBatch(db);
+      salesSnap.docs.forEach(docSnap => {
+        batch.update(docSnap.ref, { customerName: cleanName });
+      });
+      await batch.commit();
+    }
+  }
+};
+
 
 export const recordPayment = async (customerId, paymentData) => {
   const amount = typeof paymentData === 'object' && paymentData !== null ? paymentData.amount : paymentData;

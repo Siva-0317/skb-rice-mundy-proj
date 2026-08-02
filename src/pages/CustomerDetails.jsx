@@ -10,6 +10,7 @@ import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import RecordPaymentModal from '../components/RecordPaymentModal';
+import AddCustomerModal from '../components/AddCustomerModal';
 
 export default function CustomerDetails() {
   const { id } = useParams();
@@ -29,6 +30,7 @@ export default function CustomerDetails() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editMode, setEditMode] = useState('');
@@ -144,6 +146,13 @@ export default function CustomerDetails() {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h2 className="font-display text-2xl font-bold text-brownDark">{customer.name}</h2>
+            <button
+              onClick={() => setIsEditCustomerModalOpen(true)}
+              className="p-1.5 text-textMuted hover:text-gold transition-colors rounded-full hover:bg-panel"
+              title="Edit Customer"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
             {(() => {
               const status = getCustomerStatus(customer);
               const badgeStyle = status === 'overdue'
@@ -349,6 +358,14 @@ export default function CustomerDetails() {
         onSuccess={() => fetchCustomerData()}
         customers={customer ? [customer] : []}
         preselectedCustomerId={id}
+      />
+
+      {/* Edit Customer Modal */}
+      <AddCustomerModal
+        isOpen={isEditCustomerModalOpen}
+        onClose={() => setIsEditCustomerModalOpen(false)}
+        onSuccess={() => fetchCustomerData()}
+        customerToEdit={customer}
       />
 
       {/* Edit Payment Modal */}
