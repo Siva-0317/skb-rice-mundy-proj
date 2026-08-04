@@ -3,7 +3,7 @@ import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
 
 export const getCustomers = async () => {
-  const q = query(collection(db, "customers"), orderBy("name", "asc"));
+  const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
