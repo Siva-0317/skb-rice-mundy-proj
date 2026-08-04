@@ -149,12 +149,21 @@ export default function InvoiceRowsTable({ rows, items, onAddRow, onRemoveRow, o
                     ) : null}
                   </td>
                   <td className="p-2 align-top">
-                    <input
-                      type="text"
-                      readOnly
-                      value={row.itemId && row.bagKg ? `${row.bagKg} kg` : '0 kg'}
-                      className="w-full p-2 rounded-md border border-border bg-panel text-textDark text-base sm:text-sm min-h-[44px] cursor-not-allowed select-none"
-                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        step="0.1"
+                        value={row.bagKg || ''}
+                        onChange={(e) => onRowChange(row.id, 'bagKg', e.target.value)}
+                        placeholder="0"
+                        disabled={!row.itemId}
+                        className="w-full p-2 pr-8 rounded-md border border-border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none focus:ring-2 focus:ring-gold/50"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-textMuted pointer-events-none">
+                        kg
+                      </span>
+                    </div>
                   </td>
                   <td className="p-2 align-top">
                     <input
