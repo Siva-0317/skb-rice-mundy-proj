@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { X } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
-import { canEditMasters } from '../utils/permissions';
 import { addItem, updateItem } from '../firebase/items';
 import { useToast } from '../context/ToastContext';
 
 export default function AddItemModal({ isOpen, onClose, onSuccess, categories = [], editingItem = null }) {
   const { user } = useContext(AuthContext);
-  const isOwner = canEditMasters(user?.role);
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -138,9 +136,8 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, categories = 
                 min="0.01"
                 step="0.01"
                 value={formData.mrp}
-                disabled={!isOwner}
                 onChange={(e) => setFormData({ ...formData, mrp: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 disabled:bg-panel disabled:text-textMuted min-h-[44px]"
+                className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
               />
             </div>
             <div>
