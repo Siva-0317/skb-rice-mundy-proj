@@ -1,17 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useContext } from 'react';
 import { Plus, ShoppingBag, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 import { getPurchasesByMonth } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import NewPurchaseModal from '../components/NewPurchaseModal';
-
-const CATEGORY_LABELS = {
-  raw: 'Raw Rice',
-  boiled: 'Boiled Rice',
-  steam: 'Half Boiled Rice',
-  basmathi: 'Basmathi',
-  seeraga: 'Seeraga Samba'
-};
+import { CategoryContext } from '../context/CategoryContext';
 
 const FULL_MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -19,9 +12,10 @@ const FULL_MONTH_NAMES = [
 ];
 
 function PurchaseCard({ purchase, formatDate }) {
+  const { categoryMap } = useContext(CategoryContext);
   const [expanded, setExpanded] = useState(false);
 
-  const catLabel = CATEGORY_LABELS[purchase.categoryKey] || purchase.categoryKey || '—';
+  const catLabel = categoryMap[purchase.categoryKey] || purchase.categoryKey || '—';
   const totalCost = Number(purchase.total || purchase.totalAmount || 0);
   const amountPaid = Number(purchase.amountPaid || 0);
   const balance = totalCost - amountPaid;

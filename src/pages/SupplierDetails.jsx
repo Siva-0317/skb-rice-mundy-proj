@@ -6,19 +6,14 @@ import { getSupplierPurchases } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import RecordSupplierPaymentModal from '../components/RecordSupplierPaymentModal';
-
-const CATEGORY_LABELS = {
-  raw: 'Raw Rice',
-  boiled: 'Boiled Rice',
-  steam: 'Half Boiled Rice',
-  basmathi: 'Basmathi',
-  seeraga: 'Seeraga Samba'
-};
+import { CategoryContext } from '../context/CategoryContext';
+import { useContext } from 'react';
 
 export default function SupplierDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { categoryMap } = useContext(CategoryContext);
 
   const [supplier, setSupplier] = useState(null);
   const [ledger, setLedger] = useState([]);
@@ -237,7 +232,7 @@ export default function SupplierDetails() {
                     </tr>
                   ) : (
                     purchases.map(p => {
-                      const catLabel = CATEGORY_LABELS[p.categoryKey] || p.categoryKey || '-';
+                      const catLabel = categoryMap[p.categoryKey] || p.categoryKey || '-';
                       return (
                         <tr key={p.id} className="hover:bg-panel/50 transition-colors">
                           <td className="py-3.5 px-6 text-sm text-textMuted font-medium">{formatDate(p.date || p.createdAt)}</td>

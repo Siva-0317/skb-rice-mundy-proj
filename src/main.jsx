@@ -4,15 +4,18 @@ import App from './App.jsx'
 import './index.css'
 import { ToastProvider } from './context/ToastContext'
 import { AuthProvider } from './context/AuthContext'
+import { CategoryProvider } from './context/CategoryContext'
 import ErrorBoundary from './components/ErrorBoundary'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <AuthProvider>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+        <CategoryProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </CategoryProvider>
       </AuthProvider>
     </ErrorBoundary>
   </React.StrictMode>,

@@ -1,4 +1,4 @@
-import { collection, getDocs, doc, setDoc, updateDoc, query, orderBy, writeBatch, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, updateDoc, query, orderBy, writeBatch, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "./config";
 
 export const getCategories = async () => {
@@ -12,6 +12,28 @@ export const getCategories = async () => {
     seenKeys.add(c.key);
     return true;
   });
+};
+
+export const addCategory = async (data) => {
+  const newDocRef = doc(collection(db, "categories"));
+  const payload = {
+    ...data,
+    key: data.key || data.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    order: data.order || Date.now(), // Fallback order to end of list
+    createdAt: serverTimestamp()
+  };
+  await setDoc(newDocRef, payload);
+  return { id: newDocRef.id, ...payload };
+};
+
+export const updateCategory = async (id, data) => {
+  const catRef = doc(db, "categories", id);
+  await updateDoc(catRef, { ...data, updatedAt: serverTimestamp() });
+};
+
+export const deleteCategory = async (id) => {
+  const catRef = doc(db, "categories", id);
+  await deleteDoc(catRef);
 };
 
 export const getItems = async () => {

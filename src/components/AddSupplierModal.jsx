@@ -1,17 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { addSupplier, updateSupplier } from '../firebase/suppliers';
 import { useToast } from '../context/ToastContext';
-
-const SUPPLY_CATEGORIES = [
-  { key: 'raw', label: 'Raw Rice' },
-  { key: 'boiled', label: 'Boiled Rice' },
-  { key: 'steam', label: 'Half Boiled Rice' },
-  { key: 'basmathi', label: 'Basmathi' },
-  { key: 'seeraga', label: 'Seeraga Samba' }
-];
+import { CategoryContext } from '../context/CategoryContext';
 
 export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierToEdit = null }) {
+  const { categories, categoryMap } = useContext(CategoryContext);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('');
@@ -88,14 +82,7 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
             : 0
         }));
 
-      const catLabelsMap = {
-        raw: 'Raw Rice',
-        boiled: 'Boiled Rice',
-        steam: 'Half Boiled Rice',
-        basmathi: 'Basmathi',
-        seeraga: 'Seeraga Samba'
-      };
-      const categoriesStr = validRows.map(r => catLabelsMap[r.categoryKey] || r.categoryKey).join(', ');
+      const categoriesStr = validRows.map(r => categoryMap[r.categoryKey] || r.categoryKey).join(', ');
 
       const payload = {
         name: name.trim(),
@@ -195,7 +182,7 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess, supplierT
                       className="w-full px-3 py-2 rounded-lg border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/50"
                     >
                       <option value="">Select Category...</option>
-                      {SUPPLY_CATEGORIES.map(cat => (
+                      {categories.map(cat => (
                         <option key={cat.key} value={cat.key}>{cat.label}</option>
                       ))}
                     </select>

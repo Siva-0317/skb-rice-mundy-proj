@@ -4,16 +4,11 @@ import { Link } from 'react-router-dom';
 import { getSuppliers } from '../firebase/suppliers';
 import { useToast } from '../context/ToastContext';
 import AddSupplierModal from './AddSupplierModal';
-
-const CATEGORY_LABELS = {
-  raw: 'Raw Rice',
-  boiled: 'Boiled Rice',
-  steam: 'Half Boiled Rice',
-  basmathi: 'Basmathi',
-  seeraga: 'Seeraga Samba'
-};
+import { useContext } from 'react';
+import { CategoryContext } from '../context/CategoryContext';
 
 export default function SuppliersList() {
+  const { categoryMap } = useContext(CategoryContext);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +54,7 @@ export default function SuppliersList() {
     const notesMatch = s.notes && s.notes.toLowerCase().includes(q);
     const catMatch = s.categories && s.categories.toLowerCase().includes(q);
     const supplyCatMatch = s.supplyCategories && s.supplyCategories.some(sc => 
-      (CATEGORY_LABELS[sc.categoryKey] || sc.categoryKey).toLowerCase().includes(q)
+      (categoryMap[sc.categoryKey] || sc.categoryKey).toLowerCase().includes(q)
     );
     return nameMatch || phoneMatch || locationMatch || notesMatch || catMatch || supplyCatMatch;
   });
@@ -130,7 +125,7 @@ export default function SuppliersList() {
                         {hasSupplyCats ? (
                           <div className="flex flex-wrap gap-1.5">
                             {supplier.supplyCategories.map((item, idx) => {
-                              const label = CATEGORY_LABELS[item.categoryKey] || item.categoryKey;
+                              const label = categoryMap[item.categoryKey] || item.categoryKey;
                               return (
                                 <span 
                                   key={idx} 

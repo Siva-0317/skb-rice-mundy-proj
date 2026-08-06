@@ -6,12 +6,14 @@ import { getItems } from '../firebase/items';
 import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
 import { AuthContext } from '../context/AuthContext';
+import { CategoryContext } from '../context/CategoryContext';
 import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import AddCustomerModal from '../components/AddCustomerModal';
 import InvoiceRowsTable from '../components/InvoiceRowsTable';
 
 export default function Sales() {
   const { user } = useContext(AuthContext);
+  const { categoryMap } = useContext(CategoryContext);
   const location = useLocation();
   const navigate = useNavigate();
   // Master Data
@@ -600,7 +602,6 @@ export default function Sales() {
       <div className="w-full">
         {(() => {
           const fullMonthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-          const CATEGORY_LABELS = { raw: 'Raw Rice', boiled: 'Boiled Rice', steam: 'Half Boiled Rice', basmathi: 'Basmathi', seeraga: 'Seeraga Samba' };
           const curYear = selectedMonthDate.getFullYear();
           const curMonthIdx = selectedMonthDate.getMonth();
           const prevDate = new Date(curYear, curMonthIdx - 1, 1);
@@ -714,7 +715,7 @@ export default function Sales() {
                                   saleItems.map((item, idx) => {
                                     const unitMrp = Number(item.mrp ?? item.rate ?? 0);
                                     const lineAmt = Number(item.amount) || (Number(item.bags || 0) * unitMrp);
-                                    const catLabel = CATEGORY_LABELS[item.cat || item.categoryKey] || item.cat || item.categoryKey || '—';
+                                    const catLabel = categoryMap[item.cat || item.categoryKey] || item.cat || item.categoryKey || '—';
                                     const itemLabel = item.item || item.itemName || item.name || '—';
                                     return (
                                       <div

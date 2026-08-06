@@ -1,4 +1,5 @@
 import { collection, query, where, getDocs } from "firebase/firestore";
+import { getCategories } from "./items";
 import { db } from "./config";
 import { getCustomerStatus } from "../utils/customerStatus";
 import { businessDayStartUtc, businessDayEndUtc, getISTTodayAsUtcMidnight, getISTDateString } from "../utils/dateIST";
@@ -413,13 +414,11 @@ export const getCategoryPnL = async ({ from, to }) => {
     itemCatMap.set(d.id, d.data().categoryKey);
   });
 
-  const catMap = {
-    raw: { key: 'raw', label: 'Raw Rice', bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 },
-    boiled: { key: 'boiled', label: 'Boiled Rice', bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 },
-    steam: { key: 'steam', label: 'Half Boiled Rice', bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 },
-    basmathi: { key: 'basmathi', label: 'Basmathi', bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 },
-    seeraga: { key: 'seeraga', label: 'Seeraga Samba', bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 }
-  };
+  const cats = await getCategories();
+  const catMap = {};
+  cats.forEach(c => {
+    catMap[c.key] = { key: c.key, label: c.label, bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 };
+  });
 
   purchasesSnap.docs.forEach(docSnap => {
     const p = docSnap.data();
@@ -570,13 +569,9 @@ export const getItemPurchaseData = async ({ from, to }) => {
     }
   });
 
-  const CATEGORY_LABELS = {
-    raw: 'Raw Rice',
-    boiled: 'Boiled Rice',
-    steam: 'Half Boiled Rice',
-    basmathi: 'Basmathi',
-    seeraga: 'Seeraga Samba'
-  };
+  const cats = await getCategories();
+  const CATEGORY_LABELS = {};
+  cats.forEach(c => CATEGORY_LABELS[c.key] = c.label);
 
   const rows = Array.from(itemMap.values()).map(entry => ({
     ...entry,
@@ -598,21 +593,14 @@ export const getItemPurchaseData = async ({ from, to }) => {
 export const getCategoryStockValueReport = async () => {
   const itemsSnap = await getDocs(collection(db, "items"));
 
-  const CATEGORY_LABELS = {
-    raw: 'Raw Rice',
-    boiled: 'Boiled Rice',
-    steam: 'Half Boiled Rice',
-    basmathi: 'Basmathi',
-    seeraga: 'Seeraga Samba'
-  };
+  const cats = await getCategories();
+  const CATEGORY_LABELS = {};
+  cats.forEach(c => CATEGORY_LABELS[c.key] = c.label);
 
-  const catMap = {
-    raw: { category: 'Raw Rice', categoryKey: 'raw', itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 },
-    boiled: { category: 'Boiled Rice', categoryKey: 'boiled', itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 },
-    steam: { category: 'Half Boiled Rice', categoryKey: 'steam', itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 },
-    basmathi: { category: 'Basmathi', categoryKey: 'basmathi', itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 },
-    seeraga: { category: 'Seeraga Samba', categoryKey: 'seeraga', itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 }
-  };
+  const catMap = {};
+  cats.forEach(c => {
+    catMap[c.key] = { category: c.label, categoryKey: c.key, itemCount: 0, totalBags: 0, totalKgs: 0, stockValue: 0 };
+  });
 
   itemsSnap.docs.forEach(docSnap => {
     const item = docSnap.data();
@@ -811,21 +799,14 @@ export const getSupplierBalanceReport = async ({ from, to }) => {
 // CARD 7 (Purchase): Stock Summary by Variety
 export const getStockSummaryByVariety = async () => {
   const itemsSnap = await getDocs(collection(db, "items"));
-  const CATEGORY_LABELS = {
-    raw: 'Raw Rice',
-    boiled: 'Boiled Rice',
-    steam: 'Half Boiled Rice',
-    basmathi: 'Basmathi',
-    seeraga: 'Seeraga Samba'
-  };
+  const cats = await getCategories();
+  const CATEGORY_LABELS = {};
+  cats.forEach(c => CATEGORY_LABELS[c.key] = c.label);
 
-  const catMap = {
-    raw: { category: 'Raw Rice', categoryKey: 'raw', itemCount: 0, totalBags: 0, stockValue: 0 },
-    boiled: { category: 'Boiled Rice', categoryKey: 'boiled', itemCount: 0, totalBags: 0, stockValue: 0 },
-    steam: { category: 'Half Boiled Rice', categoryKey: 'steam', itemCount: 0, totalBags: 0, stockValue: 0 },
-    basmathi: { category: 'Basmathi', categoryKey: 'basmathi', itemCount: 0, totalBags: 0, stockValue: 0 },
-    seeraga: { category: 'Seeraga Samba', categoryKey: 'seeraga', itemCount: 0, totalBags: 0, stockValue: 0 }
-  };
+  const catMap = {};
+  cats.forEach(c => {
+    catMap[c.key] = { category: c.label, categoryKey: c.key, itemCount: 0, totalBags: 0, stockValue: 0 };
+  });
 
   itemsSnap.docs.forEach(docSnap => {
     const item = docSnap.data();
@@ -855,13 +836,9 @@ export const getStockSummaryByVariety = async () => {
 // CARD 7 (Sales): Current Stock Report
 export const getCurrentStockReport = async () => {
   const itemsSnap = await getDocs(collection(db, "items"));
-  const CATEGORY_LABELS = {
-    raw: 'Raw Rice',
-    boiled: 'Boiled Rice',
-    steam: 'Half Boiled Rice',
-    basmathi: 'Basmathi',
-    seeraga: 'Seeraga Samba'
-  };
+  const cats = await getCategories();
+  const CATEGORY_LABELS = {};
+  cats.forEach(c => CATEGORY_LABELS[c.key] = c.label);
 
   const rows = [];
   let totalBags = 0;
