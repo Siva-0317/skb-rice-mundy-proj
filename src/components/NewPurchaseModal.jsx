@@ -1,23 +1,16 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Package } from 'lucide-react';
 import { getSuppliers } from '../firebase/suppliers';
-import { getItems } from '../firebase/items';
+import { getItems, getCategories } from '../firebase/items';
 import { createPurchase } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 import { getISTTodayDateString } from '../utils/dateIST';
 import AddSupplierModal from './AddSupplierModal';
 
-const CATEGORIES = [
-  { key: 'raw', label: 'Raw Rice' },
-  { key: 'boiled', label: 'Boiled Rice' },
-  { key: 'steam', label: 'Half Boiled Rice' },
-  { key: 'basmathi', label: 'Basmathi' },
-  { key: 'seeraga', label: 'Seeraga Samba' }
-];
-
 export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
   const [suppliers, setSuppliers] = useState([]);
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
 
   // Form fields
@@ -36,10 +29,11 @@ export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
   useEffect(() => {
     if (!isOpen) return;
     setLoadingData(true);
-    Promise.all([getSuppliers(), getItems()])
-      .then(([suppData, itemData]) => {
+    Promise.all([getSuppliers(), getItems(), getCategories()])
+      .then(([suppData, itemData, catsData]) => {
         setSuppliers(suppData);
         setItems(itemData.filter(i => i.active !== false));
+        setCategories(catsData);
       })
       .catch(err => {
         console.error("Error loading modal data:", err);
@@ -183,10 +177,11 @@ export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
               <select
                 value={categoryKey}
                 onChange={(e) => handleCategoryChange(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 font-medium"
+                disabled={loadingData}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 font-medium disabled:opacity-50"
               >
-                <option value="">All Categories</option>
-                {CATEGORIES.map(c => (
+                <option value="">{loadingData ? 'Loading...' : 'All Categories'}</option>
+                {categories.map(c => (
                   <option key={c.key} value={c.key}>{c.label}</option>
                 ))}
               </select>
