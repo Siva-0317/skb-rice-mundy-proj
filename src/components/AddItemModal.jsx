@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { X, Plus } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
-import { CategoryContext } from '../context/CategoryContext';
 import { addItem, updateItem } from '../firebase/items';
 import { useToast } from '../context/ToastContext';
 import AddCategoryModal from './AddCategoryModal';
 
-export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem = null }) {
+export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem = null, categories = [] }) {
   const { user } = useContext(AuthContext);
-  const { categories } = useContext(CategoryContext);
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
@@ -185,7 +183,7 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem =
         isOpen={isAddCategoryOpen}
         onClose={() => setIsAddCategoryOpen(false)}
         onSuccess={async () => {
-          // After success, it will refresh the global categories context.
+          if (onSuccess) await onSuccess();
           setIsAddCategoryOpen(false);
         }}
       />

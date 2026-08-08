@@ -2,9 +2,11 @@ import { collection, getDocs, doc, setDoc, updateDoc, query, orderBy, writeBatch
 import { db } from "./config";
 
 export const getCategories = async () => {
-  const q = query(collection(db, "categories"), orderBy("order", "asc"));
-  const snapshot = await getDocs(q);
+  const snapshot = await getDocs(collection(db, "categories"));
   const cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Sort locally to avoid Firebase index errors if 'order' index is missing
+  cats.sort((a, b) => (a.order || 99) - (b.order || 99));
   
   const seenKeys = new Set();
   return cats.filter(c => {
