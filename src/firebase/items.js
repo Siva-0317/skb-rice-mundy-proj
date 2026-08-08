@@ -33,10 +33,6 @@ export const updateCategory = async (id, data) => {
   await updateDoc(catRef, { ...data, updatedAt: serverTimestamp() });
 };
 
-export const deleteCategory = async (id) => {
-  const catRef = doc(db, "categories", id);
-  await deleteDoc(catRef);
-};
 
 export const getItems = async () => {
   const q = query(collection(db, "items"), orderBy("name", "asc"));

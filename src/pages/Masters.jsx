@@ -2,7 +2,6 @@ import { useState } from 'react';
 import ItemsList from '../components/ItemsList';
 import SuppliersList from '../components/SuppliersList';
 import CustomersList from '../components/CustomersList';
-import CategoriesList from '../components/CategoriesList';
 
 export default function Masters() {
   const [activeTab, setActiveTab] = useState('items');
@@ -17,12 +16,6 @@ export default function Masters() {
             onClick={() => setActiveTab('items')}
           >
             Item Masters
-          </button>
-          <button 
-            className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'categories' ? 'text-gold border-b-2 border-gold bg-gold/5' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
-            onClick={() => setActiveTab('categories')}
-          >
-            Categories
           </button>
           <button 
             className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'suppliers' ? 'text-gold border-b-2 border-gold bg-gold/5' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
@@ -42,7 +35,6 @@ export default function Masters() {
       {/* Content */}
       <div>
         {activeTab === 'items' && <ItemsList />}
-        {activeTab === 'categories' && <CategoriesList />}
         {activeTab === 'suppliers' && <SuppliersList />}
         {activeTab === 'customers' && <CustomersList />}
       </div>
