@@ -1,4 +1,4 @@
-import { doc, collection, getDocs, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 import { getISTTodayDateString, sortByDateThenCreatedAt } from "../utils/dateIST";
 
@@ -131,4 +131,76 @@ export const createPurchase = async ({
   });
 
   return finalBillNo;
+};
+
+export const recordPurchasePayment = async (purchaseId, supplierId, { amount, mode, date, note = '' }) => {
+  const purchaseRef = doc(db, "purchases", purchaseId);
+  const supplierRef = doc(db, "suppliers", supplierId);
+  const newLedgerRef = doc(collection(db, "suppliers", supplierId, "ledger"));
+  const dateObj = new Date(date || getISTTodayDateString());
+
+  return await runTransaction(db, async (transaction) => {
+    // Read purchase
+    const purchaseDoc = await transaction.get(purchaseRef);
+    if (!purchaseDoc.exists()) throw new Error("Purchase not found");
+    const pData = purchaseDoc.data();
+    
+    // Read supplier
+    const supplierDoc = await transaction.get(supplierRef);
+    if (!supplierDoc.exists()) throw new Error("Supplier not found");
+    const sData = supplierDoc.data();
+
+    // Compute purchase values
+    const currentAmountPaid = Number(pData.amountPaid || 0);
+    const total = Number(pData.total || pData.totalAmount || 0);
+    const newAmountPaid = currentAmountPaid + Number(amount);
+    const newBalanceDue = total - newAmountPaid;
+
+    // Compute supplier values
+    const supplierBalance = Number(sData.balance || 0);
+    const newSupplierBalance = supplierBalance - Number(amount);
+
+    // Write Purchase
+    transaction.update(purchaseRef, {
+      amountPaid: newAmountPaid,
+      balanceDue: newBalanceDue,
+      lastPaymentDate: dateObj,
+      lastPaymentMode: mode,
+      updatedAt: serverTimestamp()
+    });
+
+    // Write Ledger Entry
+    transaction.set(newLedgerRef, {
+      type: 'payment',
+      desc: `Payment made · ${mode} · Bill ${pData.billNo}` + (note ? ` · ${note}` : ''),
+      debit: 0,
+      credit: Number(amount),
+      balanceAfter: newSupplierBalance,
+      date: dateObj,
+      linkedBillNo: pData.billNo,
+      createdAt: serverTimestamp()
+    });
+
+    // Write Supplier
+    transaction.update(supplierRef, {
+      balance: newSupplierBalance,
+      lastPayment: dateObj,
+      updatedAt: serverTimestamp()
+    });
+
+    return { newAmountPaid, newBalanceDue, billNo: pData.billNo };
+  });
+};
+
+export const getPurchasePayments = async (purchaseId) => {
+  const purchaseRef = doc(db, "purchases", purchaseId);
+  const purchaseDoc = await getDoc(purchaseRef);
+  if (!purchaseDoc.exists()) return null;
+  const data = purchaseDoc.data();
+  return {
+    amountPaid: data.amountPaid,
+    balanceDue: data.balanceDue,
+    lastPaymentDate: data.lastPaymentDate,
+    lastPaymentMode: data.lastPaymentMode
+  };
 };

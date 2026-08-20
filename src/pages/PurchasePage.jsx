@@ -4,6 +4,7 @@ import { getPurchasesByMonth } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import NewPurchaseModal from '../components/NewPurchaseModal';
+import RecordPurchasePaymentModal from '../components/RecordPurchasePaymentModal';
 import { CategoryContext } from '../context/CategoryContext';
 
 const FULL_MONTH_NAMES = [
@@ -11,14 +12,14 @@ const FULL_MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-function PurchaseCard({ purchase, formatDate }) {
+function PurchaseCard({ purchase, formatDate, onRecordPayment }) {
   const { categoryMap } = useContext(CategoryContext);
   const [expanded, setExpanded] = useState(false);
 
   const catLabel = categoryMap[purchase.categoryKey] || purchase.categoryKey || '—';
   const totalCost = Number(purchase.total || purchase.totalAmount || 0);
-  const amountPaid = Number(purchase.amountPaid || 0);
-  const balance = totalCost - amountPaid;
+  const amountPaid = Number(purchase.amountPaid ?? 0);
+  const balance = Number(purchase.balanceDue ?? totalCost);
 
   const phone = purchase.supplierPhone || '—';
   const location = purchase.supplierLocation || '';
@@ -53,9 +54,20 @@ function PurchaseCard({ purchase, formatDate }) {
             </>
           )}
         </div>
-        <span className="text-sm text-textMuted shrink-0 font-medium">
-          {formatDate(purchase.date || purchase.createdAt)}
-        </span>
+        <div className="flex items-center gap-3 shrink-0">
+          {balance > 0 && amountPaid === 0 && (
+            <span className="text-[10px] uppercase tracking-wider font-bold text-debit bg-debit/10 px-2 py-0.5 rounded-full">Unpaid</span>
+          )}
+          {balance > 0 && amountPaid > 0 && (
+            <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Partial</span>
+          )}
+          {balance === 0 && (
+            <span className="text-[10px] uppercase tracking-wider font-bold text-credit bg-credit/10 px-2 py-0.5 rounded-full">Paid</span>
+          )}
+          <span className="text-sm text-textMuted font-medium">
+            {formatDate(purchase.date || purchase.createdAt)}
+          </span>
+        </div>
       </div>
 
       {/* ── THIRD LINE: Supply details table ── */}
@@ -82,8 +94,8 @@ function PurchaseCard({ purchase, formatDate }) {
       <div className="border-t border-border/40">
         {/* Expanded payment panel */}
         {expanded && (
-          <div className="px-4 pt-3 pb-2">
-            <div className="bg-panel/50 rounded-xl border border-border/60 p-3 grid grid-cols-3 gap-3 text-center">
+          <div className="px-4 pt-3 pb-3">
+            <div className="bg-panel/50 rounded-xl border border-border/60 p-3 mb-3 grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-sm uppercase tracking-wider font-semibold text-textMuted mb-1">Payment Paid</p>
                 <p className={`text-sm font-bold ${amountPaid > 0 ? 'text-credit' : 'text-textMuted'}`}>
@@ -93,7 +105,7 @@ function PurchaseCard({ purchase, formatDate }) {
               <div>
                 <p className="text-sm uppercase tracking-wider font-semibold text-textMuted mb-1">Balance Due</p>
                 <p className={`text-sm font-bold ${balance > 0 ? 'text-debit' : 'text-credit'}`}>
-                  {balance > 0 ? `₹${balance.toLocaleString('en-IN')}` : '₹0'}
+                  {balance > 0 ? `₹${balance.toLocaleString('en-IN')}` : 'Fully Paid'}
                 </p>
               </div>
               <div>
@@ -101,9 +113,32 @@ function PurchaseCard({ purchase, formatDate }) {
                 <p className="text-sm font-bold text-gold">₹{totalCost.toLocaleString('en-IN')}</p>
               </div>
             </div>
-            {purchase.notes && (
-              <p className="text-sm text-textMuted italic mt-2 px-1">{purchase.notes}</p>
+
+            {purchase.lastPaymentDate && (
+              <p className="text-xs text-textMuted px-1 mb-3">
+                Last payment: {formatDate(purchase.lastPaymentDate)} via {purchase.lastPaymentMode}
+              </p>
             )}
+
+            <div className="flex justify-between items-center px-1">
+              {purchase.notes ? (
+                <p className="text-sm text-textMuted italic flex-1 mr-3">{purchase.notes}</p>
+              ) : (
+                <div className="flex-1" />
+              )}
+              {balance > 0 ? (
+                <button
+                  onClick={() => onRecordPayment(purchase)}
+                  className="px-3 py-1.5 rounded-lg border border-gold text-gold hover:bg-gold/10 text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
+                >
+                  + Record Payment
+                </button>
+              ) : (
+                <span className="text-xs font-bold uppercase tracking-wider text-credit flex items-center gap-1 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-credit" /> Fully Paid
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -136,6 +171,7 @@ export default function PurchasePage() {
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [paymentPurchase, setPaymentPurchase] = useState(null);
   const { showToast } = useToast();
 
   const fetchPurchases = useCallback(async (dateObj = selectedMonthDate) => {
@@ -251,6 +287,7 @@ export default function PurchasePage() {
                   key={purchase.id}
                   purchase={purchase}
                   formatDate={formatDate}
+                  onRecordPayment={(p) => setPaymentPurchase(p)}
                 />
               ))}
             </div>
@@ -261,7 +298,14 @@ export default function PurchasePage() {
       <NewPurchaseModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={() => fetchPurchases(selectedMonthDate)}
+        onSuccess={() => fetchPurchases()}
+      />
+
+      <RecordPurchasePaymentModal
+        isOpen={!!paymentPurchase}
+        onClose={() => setPaymentPurchase(null)}
+        purchase={paymentPurchase}
+        onSuccess={() => fetchPurchases()}
       />
     </div>
   );
