@@ -1,4 +1,4 @@
-import { collection, getDocs, doc, setDoc, updateDoc, query, orderBy, writeBatch, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc, updateDoc, query, orderBy, where, limit, writeBatch, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "./config";
 
 export const getCategories = async () => {
@@ -173,8 +173,45 @@ export const seedIfEmpty = async () => {
     
     await batch.commit();
   }
+  
   hasSeeded = true;
+  } catch (error) {
+    console.error("Error seeding generic items:", error);
   } finally {
     isSeeding = false;
   }
+};
+
+export const deleteItem = async (itemId) => {
+  const itemRef = doc(db, "items", itemId);
+  const itemSnap = await getDoc(itemRef);
+  
+  if (!itemSnap.exists()) {
+    throw new Error("Item not found");
+  }
+  
+  const itemName = itemSnap.data().name || 'Unknown Item';
+
+  // Check if item is used in purchases
+  const purchasesQ = query(collection(db, "purchases"), where("itemId", "==", itemId), limit(1));
+  const purchasesSnap = await getDocs(purchasesQ);
+  if (!purchasesSnap.empty) {
+    throw new Error(`Cannot delete '${itemName}' — it has existing purchase records. Deactivate it instead using the Active toggle.`);
+  }
+
+  // Check if item is used in sales
+  // Fetch all sales and filter client-side as Firestore cannot natively query partial objects inside arrays
+  const salesSnap = await getDocs(collection(db, "sales"));
+  const isUsedInSales = salesSnap.docs.some(d => {
+    const data = d.data();
+    return data.items && data.items.some(i => i.itemId === itemId);
+  });
+  
+  if (isUsedInSales) {
+    throw new Error(`Cannot delete '${itemName}' — it has existing sales records. Deactivate it instead using the Active toggle.`);
+  }
+
+  // If no transactions exist, safely delete the item
+  await deleteDoc(itemRef);
+  return { deleted: true, itemId, itemName };
 };

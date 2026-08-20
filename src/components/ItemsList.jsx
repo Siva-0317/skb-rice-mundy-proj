@@ -3,8 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { canEditMasters } from '../utils/permissions';
 import { getCategories, getItems, setItemActive, seedIfEmpty } from '../firebase/items';
-import { Pencil, ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { Pencil, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import AddItemModal from './AddItemModal';
+import DeleteItemModal from './DeleteItemModal';
 
 export default function ItemsList() {
   const location = useLocation();
@@ -17,6 +18,7 @@ export default function ItemsList() {
   const [expandedCats, setExpandedCats] = useState({});
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -78,6 +80,10 @@ export default function ItemsList() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingItem(null);
+  };
+
+  const handleDeleteSuccess = (deletedItemId) => {
+    fetchData();
   };
 
   const itemsByCategory = useMemo(() => {
@@ -159,17 +165,31 @@ export default function ItemsList() {
                       <td className="py-3 px-6 text-sm text-textDark text-right font-medium">₹{item.mrp !== undefined && item.mrp !== null ? item.mrp : item.rate}</td>
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.stock}</td>
                       <td className="py-3 px-6 text-center">
-                        <button 
-                          onClick={() => handleToggleActive(item)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.active ? 'bg-credit' : 'bg-textMuted/40'}`}
-                        >
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.active ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
+                        <div className="group/toggle relative inline-block">
+                          <button 
+                            onClick={() => handleToggleActive(item)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.active ? 'bg-credit' : 'bg-textMuted/40'}`}
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.active ? 'translate-x-6' : 'translate-x-1'}`} />
+                          </button>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden w-max max-w-[200px] px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover/toggle:block group-hover/toggle:opacity-100 transition-opacity z-50 pointer-events-none text-center">
+                            Toggle off to hide this item from sales dropdowns without deleting its history.
+                          </div>
+                        </div>
                       </td>
                         <td className="py-3 px-6 text-center">
-                          <button onClick={() => handleOpenModal(item)} className="p-2.5 text-textMuted hover:text-gold transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center">
-                            <Pencil className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => handleOpenModal(item)} className="p-2.5 text-textMuted hover:text-gold transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={() => setItemToDelete(item)}
+                              className="p-2.5 text-red-400 hover:text-red-600 transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -188,6 +208,13 @@ export default function ItemsList() {
         onSuccess={fetchData}
         categories={categories}
         editingItem={editingItem}
+      />
+      
+      <DeleteItemModal
+        isOpen={!!itemToDelete}
+        item={itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onSuccess={handleDeleteSuccess}
       />
     </div>
   );
