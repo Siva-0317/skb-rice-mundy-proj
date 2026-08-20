@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X, Pencil } from 'lucide-react';
+import { ArrowLeft, X, Pencil, Trash2, Info } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { getCustomer, getCustomerLedgerPaginated, recordPayment } from '../firebase/customers';
-import { editLedgerEntry } from '../firebase/ledger';
+import { editLedgerEntry, deleteLedgerEntry } from '../firebase/ledger';
 import { PAYMENT_MODES } from '../utils/constants';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
@@ -34,6 +34,7 @@ export default function CustomerDetails() {
   const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editMode, setEditMode] = useState('');
   const [editNote, setEditNote] = useState('');
@@ -112,6 +113,28 @@ export default function CustomerDetails() {
     } catch (error) {
       console.error("Error updating payment:", error);
       showToast(error.message || "Failed to update payment", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteEntry = async (entry) => {
+    try {
+      setIsSubmitting(true);
+      const result = await deleteLedgerEntry('customer', id, entry.id);
+      showToast(`Entry deleted. Balance updated to ₹${result.newBalance.toLocaleString('en-IN')}.`, "success");
+      setDeletingEntryId(null);
+      setCustomer(prev => ({ ...prev, balance: result.newBalance }));
+      
+      if (ledger.length === 1 && currentPage > 1) {
+        fetchLedgerPage(currentPage - 1);
+      } else {
+        fetchLedgerPage(currentPage);
+      }
+    } catch (error) {
+      console.error("Error deleting entry:", error);
+      showToast(error.message || "Failed to delete entry", "error");
+      setDeletingEntryId(null);
     } finally {
       setIsSubmitting(false);
     }
@@ -235,6 +258,7 @@ export default function CustomerDetails() {
                     <th className="py-3 px-6 font-medium text-right">பற்று Debit</th>
                     <th className="py-3 px-6 font-medium text-right">வரவு Credit</th>
                     <th className="py-3 px-6 font-medium text-right">Balance</th>
+                    <th className="py-3 px-6 font-medium text-center w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,8 +267,43 @@ export default function CustomerDetails() {
                       <td colSpan="5" className="py-8 text-center text-textMuted text-sm">No ledger entries found.</td>
                     </tr>
                   ) : (
-                    ledger.map((entry, idx) => (
-                      <tr key={entry.id} className="border-b border-border hover:bg-panel/50 transition-colors">
+                    ledger.map((entry, idx) => {
+                      if (deletingEntryId === entry.id) {
+                        const effect = (Number(entry.debit) || 0) - (Number(entry.credit) || 0);
+                        const effectAmount = Math.abs(effect);
+                        const amountStr = (Number(entry.debit) || 0) > 0 ? entry.debit : entry.credit;
+                        return (
+                          <tr key={`del-${entry.id}`} className="bg-red-50/50 border-b border-red-100">
+                            <td colSpan="6" className="py-3 px-6">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-red-900">
+                                  Delete this {entry.type} entry of <span className="font-bold">₹{Number(amountStr).toLocaleString('en-IN')}</span> on {formatDate(entry.date)}? 
+                                  Customer balance will be adjusted by <span className="font-bold">₹{effectAmount.toLocaleString('en-IN')}</span>.
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => setDeletingEntryId(null)}
+                                    disabled={isSubmitting}
+                                    className="text-sm font-medium text-textMuted hover:text-textDark disabled:opacity-50 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteEntry(entry)}
+                                    disabled={isSubmitting}
+                                    className="text-sm font-bold text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                                  >
+                                    {isSubmitting ? 'Deleting...' : 'Delete Entry'}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      
+                      return (
+                      <tr key={entry.id} className="border-b border-border hover:bg-panel/50 transition-colors group">
                         <td className="py-3 px-6 text-sm text-textMuted">{formatDate(entry.date)}</td>
                         <td className="py-3 px-6 text-sm font-medium text-textDark">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -257,7 +316,7 @@ export default function CustomerDetails() {
                             {entry.type === 'payment' && !entry.autoGenerated && idx === 0 && (
                               <button
                                 onClick={() => handleOpenEditPayment(entry)}
-                                className="p-1 text-textMuted hover:text-gold transition-colors rounded hover:bg-panel/50 inline-flex items-center justify-center"
+                                className="p-1 text-textMuted hover:text-gold transition-colors rounded hover:bg-panel/50 inline-flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100"
                                 title="Edit Payment"
                               >
                                 <Pencil className="w-4 h-4" />
@@ -277,8 +336,24 @@ export default function CustomerDetails() {
                             : `₹${Number(entry.balanceAfter || 0).toLocaleString('en-IN')}`
                           }
                         </td>
+                        <td className="py-3 px-4 text-center">
+                          {(entry.type === 'payment' || entry.type === 'opening') ? (
+                            <button
+                              onClick={() => setDeletingEntryId(entry.id)}
+                              className="p-1.5 text-textMuted hover:text-debit transition-colors rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
+                              title="Delete Entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <div className="p-1.5 text-textMuted/50 inline-flex" title="Delete via Sales page">
+                              <Info className="w-4 h-4" />
+                            </div>
+                          )}
+                        </td>
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>

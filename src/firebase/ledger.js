@@ -76,3 +76,36 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
     transaction.update(personRef, { balance: newBalance });
   });
 };
+
+export const deleteLedgerEntry = async (personType, personId, entryId) => {
+  const collectionName = (personType === 'supplier' || personType === 'suppliers') ? 'suppliers' : 'customers';
+  const entryRef = doc(db, collectionName, personId, "ledger", entryId);
+  const personRef = doc(db, collectionName, personId);
+
+  return await runTransaction(db, async (transaction) => {
+    const entrySnap = await transaction.get(entryRef);
+    if (!entrySnap.exists()) {
+      throw new Error("Ledger entry not found");
+    }
+    const entryData = entrySnap.data();
+    
+    if (entryData.type !== 'payment' && entryData.type !== 'opening') {
+      throw new Error("Cannot delete this entry type directly. Please delete the associated bill instead.");
+    }
+
+    const effectOnBalance = (Number(entryData.debit) || 0) - (Number(entryData.credit) || 0);
+
+    const personSnap = await transaction.get(personRef);
+    if (!personSnap.exists()) {
+      throw new Error("Person not found");
+    }
+    
+    const currentBalance = Number(personSnap.data().balance) || 0;
+    const newBalance = currentBalance - effectOnBalance;
+
+    transaction.update(personRef, { balance: newBalance });
+    transaction.delete(entryRef);
+
+    return { deletedEntryId: entryId, newBalance, personId };
+  });
+};

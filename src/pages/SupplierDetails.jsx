@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone, RefreshCw } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, RefreshCw, Trash2, Info } from 'lucide-react';
 import { getSupplier, getSupplierLedgerPaginated } from '../firebase/suppliers';
 import { getSupplierPurchases } from '../firebase/purchases';
+import { deleteLedgerEntry } from '../firebase/ledger';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import RecordSupplierPaymentModal from '../components/RecordSupplierPaymentModal';
@@ -25,6 +26,8 @@ export default function SupplierDetails() {
   const [totalLedgerCount, setTotalLedgerCount] = useState(0);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
 
   const fetchLedgerPage = async (pageTarget = 1) => {
     try {
@@ -58,6 +61,28 @@ export default function SupplierDetails() {
   useEffect(() => {
     fetchSupplierData();
   }, [id]);
+
+  const handleDeleteEntry = async (entry) => {
+    try {
+      setIsSubmitting(true);
+      const result = await deleteLedgerEntry('supplier', id, entry.id);
+      showToast(`Entry deleted. Balance updated to ₹${result.newBalance.toLocaleString('en-IN')}.`, "success");
+      setDeletingEntryId(null);
+      setSupplier(prev => ({ ...prev, balance: result.newBalance }));
+      
+      if (ledger.length === 1 && currentPage > 1) {
+        fetchLedgerPage(currentPage - 1);
+      } else {
+        fetchLedgerPage(currentPage);
+      }
+    } catch (error) {
+      console.error("Error deleting entry:", error);
+      showToast(error.message || "Failed to delete entry", "error");
+      setDeletingEntryId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const formatDate = (dateVal) => formatDateIST(dateVal);
 
@@ -171,6 +196,7 @@ export default function SupplierDetails() {
                     <th className="py-3.5 px-6 font-semibold text-right w-[13%]">பற்று Debit</th>
                     <th className="py-3.5 px-6 font-semibold text-right w-[13%]">வரவு Credit</th>
                     <th className="py-3.5 px-6 font-semibold text-right w-[14%]">Balance</th>
+                    <th className="py-3.5 px-4 font-semibold text-center w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -179,8 +205,43 @@ export default function SupplierDetails() {
                       <td colSpan="5" className="py-12 text-center text-textMuted text-sm">No ledger entries found.</td>
                     </tr>
                   ) : (
-                    ledger.map(entry => (
-                      <tr key={entry.id} className="hover:bg-panel/50 transition-colors">
+                    ledger.map(entry => {
+                      if (deletingEntryId === entry.id) {
+                        const effect = (Number(entry.debit) || 0) - (Number(entry.credit) || 0);
+                        const effectAmount = Math.abs(effect);
+                        const amountStr = (Number(entry.debit) || 0) > 0 ? entry.debit : entry.credit;
+                        return (
+                          <tr key={`del-${entry.id}`} className="bg-red-50/50 border-b border-red-100">
+                            <td colSpan="6" className="py-3.5 px-6">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-red-900">
+                                  Delete this {entry.type} entry of <span className="font-bold">₹{Number(amountStr).toLocaleString('en-IN')}</span> on {formatDate(entry.date)}? 
+                                  Supplier balance will be adjusted by <span className="font-bold">₹{effectAmount.toLocaleString('en-IN')}</span>.
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => setDeletingEntryId(null)}
+                                    disabled={isSubmitting}
+                                    className="text-sm font-medium text-textMuted hover:text-textDark disabled:opacity-50 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteEntry(entry)}
+                                    disabled={isSubmitting}
+                                    className="text-sm font-bold text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
+                                  >
+                                    {isSubmitting ? 'Deleting...' : 'Delete Entry'}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      
+                      return (
+                      <tr key={entry.id} className="hover:bg-panel/50 transition-colors group">
                         <td className="py-3.5 px-6 text-sm text-textMuted font-medium">{formatDate(entry.date)}</td>
                         <td className="py-3.5 px-6 text-sm font-medium text-textDark">
                           <span>{entry.desc || '-'}</span>
@@ -197,8 +258,24 @@ export default function SupplierDetails() {
                             : `₹${Number(entry.balanceAfter || 0).toLocaleString('en-IN')}`
                           }
                         </td>
+                        <td className="py-3.5 px-4 text-center">
+                          {(entry.type === 'payment' || entry.type === 'opening') ? (
+                            <button
+                              onClick={() => setDeletingEntryId(entry.id)}
+                              className="p-1.5 text-textMuted hover:text-debit transition-colors rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
+                              title="Delete Entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <div className="p-1.5 text-textMuted/50 inline-flex" title="Delete via Purchase page">
+                              <Info className="w-4 h-4" />
+                            </div>
+                          )}
+                        </td>
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>
