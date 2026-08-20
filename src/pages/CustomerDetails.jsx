@@ -11,6 +11,7 @@ import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import AddCustomerModal from '../components/AddCustomerModal';
+import DeleteCustomerModal from '../components/DeleteCustomerModal';
 
 export default function CustomerDetails() {
   const { id } = useParams();
@@ -31,6 +32,7 @@ export default function CustomerDetails() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editMode, setEditMode] = useState('');
@@ -152,6 +154,13 @@ export default function CustomerDetails() {
               title="Edit Customer"
             >
               <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="text-xs font-semibold text-debit hover:text-red-700 underline underline-offset-2 ml-2 transition-colors"
+              title="Delete Customer"
+            >
+              Delete Customer
             </button>
             {(() => {
               const status = getCustomerStatus(customer);
@@ -366,6 +375,14 @@ export default function CustomerDetails() {
         onClose={() => setIsEditCustomerModalOpen(false)}
         onSuccess={() => fetchCustomerData()}
         customerToEdit={customer}
+      />
+
+      {/* Delete Customer Modal */}
+      <DeleteCustomerModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onSuccess={() => navigate('/customers')}
+        customer={customer}
       />
 
       {/* Edit Payment Modal */}

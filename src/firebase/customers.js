@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, where, writeBatch, deleteDoc, increment } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
 
@@ -182,6 +182,94 @@ export const updateCustomer = async (id, { name, mobile }) => {
   }
 };
 
+export const deleteCustomer = async (customerId) => {
+  let deletedLedgerEntries = 0;
+  let deletedSales = 0;
+
+  // Helper to chunk arrays
+  const chunkArray = (arr, size) => {
+    const chunks = [];
+    for(let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+  };
+
+  // 1. Delete ledger entries in batches
+  const ledgerRef = collection(db, "customers", customerId, "ledger");
+  const ledgerSnap = await getDocs(ledgerRef);
+  
+  const ledgerChunks = chunkArray(ledgerSnap.docs, 500);
+  for (const chunk of ledgerChunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(d => {
+      batch.delete(d.ref);
+      deletedLedgerEntries++;
+    });
+    await batch.commit();
+  }
+
+  // 2. Process Sales (reverse stock and delete sale docs)
+  const salesQuery = query(collection(db, "sales"), where("customerId", "==", customerId));
+  const salesSnap = await getDocs(salesQuery);
+
+  // Collect total bags to add back per itemId
+  const itemRestorations = {};
+  
+  salesSnap.docs.forEach(saleDoc => {
+    const data = saleDoc.data();
+    if (data.rows && Array.isArray(data.rows)) {
+      data.rows.forEach(row => {
+        if (row.itemId && row.bags) {
+          itemRestorations[row.itemId] = (itemRestorations[row.itemId] || 0) + Number(row.bags);
+        }
+      });
+    }
+  });
+
+  // Verify which items still exist before attempting to increment
+  const existingItemUpdates = {};
+  for (const itemId of Object.keys(itemRestorations)) {
+    const itemRef = doc(db, "items", itemId);
+    const itemDoc = await getDoc(itemRef);
+    if (itemDoc.exists()) {
+      existingItemUpdates[itemId] = itemRestorations[itemId];
+    }
+  }
+
+  // Batch delete sales and update items
+  const saleOps = salesSnap.docs.map(d => ({ type: 'delete', ref: d.ref }));
+  const itemOps = Object.keys(existingItemUpdates).map(itemId => ({ 
+    type: 'update', 
+    ref: doc(db, "items", itemId), 
+    bags: existingItemUpdates[itemId] 
+  }));
+
+  const allOps = [...itemOps, ...saleOps];
+  const opsChunks = chunkArray(allOps, 500);
+
+  for (const chunk of opsChunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(op => {
+      if (op.type === 'delete') {
+        batch.delete(op.ref);
+        deletedSales++;
+      } else if (op.type === 'update') {
+        batch.update(op.ref, { 
+          stock: increment(op.bags),
+          updatedAt: serverTimestamp() 
+        });
+      }
+    });
+    await batch.commit();
+  }
+
+  // 3. Delete customer document
+  const customerRef = doc(db, "customers", customerId);
+  await deleteDoc(customerRef);
+
+  return { deletedLedgerEntries, deletedSales, customerId };
+};
 
 export const recordPayment = async (customerId, paymentData) => {
   const amount = typeof paymentData === 'object' && paymentData !== null ? paymentData.amount : paymentData;

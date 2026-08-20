@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit2, ChevronRight } from 'lucide-react';
+import { Search, Plus, Edit2, ChevronRight, Trash2 } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import AddCustomerModal from './AddCustomerModal';
+import DeleteCustomerModal from './DeleteCustomerModal';
 
 export default function CustomersList() {
   const [customers, setCustomers] = useState([]);
@@ -13,6 +14,7 @@ export default function CustomersList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState(null);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -45,6 +47,15 @@ export default function CustomersList() {
     e.stopPropagation(); // Prevent navigating to details
     setCustomerToEdit(customer);
     setIsModalOpen(true);
+  };
+
+  const handleDeleteClick = (e, customer) => {
+    e.stopPropagation();
+    setCustomerToDelete(customer);
+  };
+
+  const handleDeleteSuccess = (deletedId) => {
+    setCustomers(prev => prev.filter(c => c.id !== deletedId));
   };
 
   const filteredCustomers = customers.filter(c => 
@@ -136,13 +147,22 @@ export default function CustomersList() {
                         </span>
                       </td>
                       <td className="py-3.5 px-6 text-center">
-                        <button
-                          onClick={(e) => handleEditClick(e, customer)}
-                          className="p-1.5 text-textMuted hover:text-brownDark transition-colors rounded-lg hover:bg-panel"
-                          title="Edit Customer"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(e) => handleEditClick(e, customer)}
+                            className="p-1.5 text-textMuted hover:text-brownDark transition-colors rounded-lg hover:bg-panel"
+                            title="Edit Customer"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteClick(e, customer)}
+                            className="p-1.5 text-textMuted hover:text-debit transition-colors rounded-lg hover:bg-red-50"
+                            title="Delete Customer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -161,6 +181,13 @@ export default function CustomersList() {
         }} 
         onSuccess={handleModalSuccess}
         customerToEdit={customerToEdit}
+      />
+
+      <DeleteCustomerModal
+        isOpen={!!customerToDelete}
+        onClose={() => setCustomerToDelete(null)}
+        onSuccess={handleDeleteSuccess}
+        customer={customerToDelete}
       />
     </div>
   );
