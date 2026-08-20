@@ -1,4 +1,4 @@
-import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "./config";
 import { getISTTodayDateString, sortByDateThenCreatedAt } from "../utils/dateIST";
 
@@ -203,4 +203,91 @@ export const getPurchasePayments = async (purchaseId) => {
     lastPaymentDate: data.lastPaymentDate,
     lastPaymentMode: data.lastPaymentMode
   };
+};
+
+export const deletePurchase = async (purchaseId) => {
+  const purchaseRef = doc(db, "purchases", purchaseId);
+
+  const result = await runTransaction(db, async (transaction) => {
+    // 1. Read purchase
+    const pDoc = await transaction.get(purchaseRef);
+    if (!pDoc.exists()) throw new Error("Purchase not found");
+    const pData = pDoc.data();
+
+    // 2. Compute stock reversal
+    const itemsToUpdate = [];
+    if (pData.rows && Array.isArray(pData.rows)) {
+      for (const row of pData.rows) {
+        if (row.itemId && row.bags) {
+          itemsToUpdate.push({ itemId: row.itemId, bags: Number(row.bags) });
+        }
+      }
+    } else if (pData.itemId && pData.bags) {
+      itemsToUpdate.push({ itemId: pData.itemId, bags: Number(pData.bags) });
+    }
+
+    // Read all item docs first (transactions must read before write)
+    const itemRefs = itemsToUpdate.map(item => doc(db, "items", item.itemId));
+    const itemDocs = [];
+    for (const ref of itemRefs) {
+      itemDocs.push(await transaction.get(ref));
+    }
+
+    // 3. Update stock
+    for (let i = 0; i < itemsToUpdate.length; i++) {
+      const iDoc = itemDocs[i];
+      if (iDoc.exists()) {
+        const currentStock = Number(iDoc.data().stock || 0);
+        const bagsToDeduct = itemsToUpdate[i].bags;
+        const newStock = Math.max(0, currentStock - bagsToDeduct);
+        transaction.update(iDoc.ref, { stock: newStock });
+      }
+    }
+
+    // 4. Update Supplier Balance
+    const supplierRef = doc(db, "suppliers", pData.supplierId);
+    const sDoc = await transaction.get(supplierRef);
+    if (sDoc.exists()) {
+      const currentBalance = Number(sDoc.data().balance || 0);
+      const purchaseTotal = Number(pData.total || pData.totalAmount || 0);
+      const amountPaid = Number(pData.amountPaid || 0);
+      
+      const newBalance = currentBalance - purchaseTotal + amountPaid;
+      
+      transaction.update(supplierRef, { balance: newBalance });
+    }
+
+    // 5. Delete purchase
+    transaction.delete(purchaseRef);
+
+    return { billNo: pData.billNo, supplierId: pData.supplierId, itemsCount: itemsToUpdate.length };
+  });
+
+  // 6. Delete linked ledger entries (post-transaction)
+  if (result.billNo && result.supplierId) {
+    const ledgerRef = collection(db, "suppliers", result.supplierId, "ledger");
+    const q = query(ledgerRef);
+    const ledgerSnap = await getDocs(q);
+    
+    const docsToDelete = ledgerSnap.docs.filter(d => {
+      const data = d.data();
+      return (data.linkedBillNo === result.billNo) || 
+             (data.desc && data.desc.includes(result.billNo));
+    });
+
+    if (docsToDelete.length > 0) {
+      const chunks = [];
+      for(let i=0; i<docsToDelete.length; i+=500) {
+        chunks.push(docsToDelete.slice(i, i+500));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+  }
+
+  return result;
 };

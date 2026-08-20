@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
-import { Plus, ShoppingBag, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, ShoppingBag, MapPin, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { getPurchasesByMonth } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST, getISTTodayDateString } from '../utils/dateIST';
 import NewPurchaseModal from '../components/NewPurchaseModal';
 import RecordPurchasePaymentModal from '../components/RecordPurchasePaymentModal';
+import DeletePurchaseModal from '../components/DeletePurchaseModal';
 import { CategoryContext } from '../context/CategoryContext';
 
 const FULL_MONTH_NAMES = [
@@ -12,7 +13,7 @@ const FULL_MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-function PurchaseCard({ purchase, formatDate, onRecordPayment }) {
+function PurchaseCard({ purchase, formatDate, onRecordPayment, onDeleteClick }) {
   const { categoryMap } = useContext(CategoryContext);
   const [expanded, setExpanded] = useState(false);
 
@@ -32,9 +33,18 @@ function PurchaseCard({ purchase, formatDate, onRecordPayment }) {
         <span className="font-bold text-textDark text-base truncate max-w-[38%]">
           {purchase.supplierName || '—'}
         </span>
-        <span className="text-sm font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
-          {purchase.billNo || '—'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-textMuted bg-panel border border-border/70 px-2.5 py-0.5 rounded-full shrink-0">
+            {purchase.billNo || '—'}
+          </span>
+          <button
+            onClick={() => onDeleteClick(purchase)}
+            className="p-1.5 text-textMuted hover:text-debit transition-colors rounded-lg hover:bg-red-50"
+            title="Delete Purchase"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
         <span className="font-bold text-gold text-base shrink-0">
           ₹{totalCost.toLocaleString('en-IN')}
         </span>
@@ -172,6 +182,7 @@ export default function PurchasePage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [paymentPurchase, setPaymentPurchase] = useState(null);
+  const [purchaseToDelete, setPurchaseToDelete] = useState(null);
   const { showToast } = useToast();
 
   const fetchPurchases = useCallback(async (dateObj = selectedMonthDate) => {
@@ -288,6 +299,7 @@ export default function PurchasePage() {
                   purchase={purchase}
                   formatDate={formatDate}
                   onRecordPayment={(p) => setPaymentPurchase(p)}
+                  onDeleteClick={(p) => setPurchaseToDelete(p)}
                 />
               ))}
             </div>
@@ -306,6 +318,16 @@ export default function PurchasePage() {
         onClose={() => setPaymentPurchase(null)}
         purchase={paymentPurchase}
         onSuccess={() => fetchPurchases()}
+      />
+
+      <DeletePurchaseModal
+        isOpen={!!purchaseToDelete}
+        onClose={() => setPurchaseToDelete(null)}
+        purchase={purchaseToDelete}
+        onSuccess={(deletedId) => {
+          setPurchases(prev => prev.filter(p => p.id !== deletedId));
+          setPurchaseToDelete(null);
+        }}
       />
     </div>
   );

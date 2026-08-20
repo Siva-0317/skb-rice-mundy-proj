@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, RefreshCw } from 'lucide-react';
 import { getSupplier, getSupplierLedgerPaginated } from '../firebase/suppliers';
 import { getSupplierPurchases } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
@@ -133,19 +133,31 @@ export default function SupplierDetails() {
 
       {/* Tabs Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
-        <div className="flex border-b border-border">
-          <button 
-            className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'ledger' ? 'text-gold border-b-2 border-gold bg-gold/5 font-semibold' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
-            onClick={() => setActiveTab('ledger')}
-          >
-            Ledger
-          </button>
-          <button 
-            className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'purchases' ? 'text-gold border-b-2 border-gold bg-gold/5 font-semibold' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
-            onClick={() => setActiveTab('purchases')}
-          >
-            Purchase History
-          </button>
+        <div className="flex border-b border-border relative">
+          <div className="flex flex-1">
+            <button 
+              className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'ledger' ? 'text-gold border-b-2 border-gold bg-gold/5 font-semibold' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
+              onClick={() => setActiveTab('ledger')}
+            >
+              Ledger
+            </button>
+            <button 
+              className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'purchases' ? 'text-gold border-b-2 border-gold bg-gold/5 font-semibold' : 'text-textMuted hover:text-textDark hover:bg-panel/50'}`}
+              onClick={() => setActiveTab('purchases')}
+            >
+              Purchase History
+            </button>
+          </div>
+          <div className="absolute right-4 top-1/2 -translate-y-1/2">
+            <button
+              onClick={() => fetchSupplierData()}
+              className="p-1.5 text-textMuted hover:text-gold transition-colors rounded-lg hover:bg-panel flex items-center gap-1.5 text-sm font-medium border border-transparent hover:border-border bg-white shadow-sm"
+              title="Refresh Data"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
 
         <div className="p-0">
