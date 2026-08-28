@@ -206,64 +206,92 @@ export const getPurchasePayments = async (purchaseId) => {
 };
 
 export const deletePurchase = async (purchaseId) => {
-  const purchaseRef = doc(db, "purchases", purchaseId);
+  // Step 1: Read the purchase doc OUTSIDE the transaction first to get
+  // the data needed to know what else to read inside the transaction.
+  const purchaseSnap = await getDoc(doc(db, 'purchases', purchaseId));
+  if (!purchaseSnap.exists()) throw new Error('Purchase record not found.');
+  const purchase = purchaseSnap.data();
 
   const result = await runTransaction(db, async (transaction) => {
-    // 1. Read purchase
-    const pDoc = await transaction.get(purchaseRef);
-    if (!pDoc.exists()) throw new Error("Purchase not found");
-    const pData = pDoc.data();
+    // ── PHASE 1: ALL READS ──────────────────────────────────────────────
+    
+    // Read the purchase doc again inside transaction (for consistency)
+    const purchaseRef = doc(db, 'purchases', purchaseId);
+    const purchaseDoc = await transaction.get(purchaseRef);
 
-    // 2. Compute stock reversal
-    const itemsToUpdate = [];
-    if (pData.rows && Array.isArray(pData.rows)) {
-      for (const row of pData.rows) {
-        if (row.itemId && row.bags) {
-          itemsToUpdate.push({ itemId: row.itemId, bags: Number(row.bags) });
-        }
-      }
-    } else if (pData.itemId && pData.bags) {
-      itemsToUpdate.push({ itemId: pData.itemId, bags: Number(pData.bags) });
-    }
+    // Read the supplier doc
+    const supplierRef = doc(db, 'suppliers', purchase.supplierId);
+    const supplierDoc = await transaction.get(supplierRef);
 
-    // Read all item docs first (transactions must read before write)
-    const itemRefs = itemsToUpdate.map(item => doc(db, "items", item.itemId));
-    const itemDocs = [];
-    for (const ref of itemRefs) {
-      itemDocs.push(await transaction.get(ref));
-    }
-
-    // 3. Update stock
-    for (let i = 0; i < itemsToUpdate.length; i++) {
-      const iDoc = itemDocs[i];
-      if (iDoc.exists()) {
-        const currentStock = Number(iDoc.data().stock || 0);
-        const bagsToDeduct = itemsToUpdate[i].bags;
-        const newStock = Math.max(0, currentStock - bagsToDeduct);
-        transaction.update(iDoc.ref, { stock: newStock });
+    // Read ALL item docs that this purchase affected
+    const itemRefs = {};
+    const itemDocs = {};
+    const rows = purchase.rows && Array.isArray(purchase.rows) 
+      ? purchase.rows 
+      : [{ itemId: purchase.itemId, bags: purchase.bags }];
+      
+    for (const row of rows) {
+      if (row.itemId && !itemRefs[row.itemId]) {
+        itemRefs[row.itemId] = doc(db, 'items', row.itemId);
+        itemDocs[row.itemId] = await transaction.get(itemRefs[row.itemId]);
       }
     }
 
-    // 4. Update Supplier Balance
-    const supplierRef = doc(db, "suppliers", pData.supplierId);
-    const sDoc = await transaction.get(supplierRef);
-    if (sDoc.exists()) {
-      const currentBalance = Number(sDoc.data().balance || 0);
-      const purchaseTotal = Number(pData.total || pData.totalAmount || 0);
-      const amountPaid = Number(pData.amountPaid || 0);
+    // ── PHASE 2: COMPUTE ────────────────────────────────────────────────
+    
+    const pData = purchaseDoc.data();
+    const total = pData.total || pData.totalAmount || 0;
+    const amountPaid = pData.amountPaid || 0;
+
+    const supplierData = supplierDoc.exists() ? supplierDoc.data() : {};
+    const currentSupplierBalance = supplierData.balance || 0;
+    
+    // Reversing the purchase: remove the debt (total) and also remove the
+    // payment already made (amountPaid) since we're erasing the whole bill.
+    const newSupplierBalance = currentSupplierBalance - total + amountPaid;
+
+    // Compute new stock for each item (reduce by the bags that were added)
+    const newStocks = {};
+    const pRows = pData.rows && Array.isArray(pData.rows) 
+      ? pData.rows 
+      : [{ itemId: pData.itemId, bags: pData.bags }];
       
-      const newBalance = currentBalance - purchaseTotal + amountPaid;
-      
-      transaction.update(supplierRef, { balance: newBalance });
+    for (const row of pRows) {
+      if (!row.itemId) continue;
+      const currentStock = itemDocs[row.itemId]?.exists()
+        ? (itemDocs[row.itemId].data().stock || 0)
+        : 0;
+      newStocks[row.itemId] = Math.max(0, currentStock - (row.bags || 0));
     }
 
-    // 5. Delete purchase
+    // ── PHASE 3: ALL WRITES ─────────────────────────────────────────────
+    
+    // Delete the purchase doc
     transaction.delete(purchaseRef);
 
-    return { billNo: pData.billNo, supplierId: pData.supplierId, itemsCount: itemsToUpdate.length };
+    // Update supplier balance
+    if (supplierDoc.exists()) {
+      transaction.update(supplierRef, {
+        balance: newSupplierBalance,
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    // Update each item's stock
+    for (const [itemId, newStock] of Object.entries(newStocks)) {
+      if (itemRefs[itemId]) {
+        transaction.update(itemRefs[itemId], {
+          stock: newStock,
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+    
+    return { billNo: pData.billNo, supplierId: pData.supplierId };
   });
 
-  // 6. Delete linked ledger entries (post-transaction)
+  // Step 2: After the transaction commits, delete linked supplier ledger entries
+  // in a SEPARATE batch
   if (result.billNo && result.supplierId) {
     const ledgerRef = collection(db, "suppliers", result.supplierId, "ledger");
     const q = query(ledgerRef);
@@ -289,5 +317,5 @@ export const deletePurchase = async (purchaseId) => {
     }
   }
 
-  return result;
+  return { deleted: true, billNo: result.billNo };
 };
