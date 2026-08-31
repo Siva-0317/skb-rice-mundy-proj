@@ -4,7 +4,8 @@ import { toDateObj as toDateObject } from './dateIST';
 export const getCustomerStatus = (customer) => {
   if (!customer) return 'settled';
   const balance = Number(customer.balance) || 0;
-  if (balance <= 0) return 'settled';
+  if (balance < 0) return 'advance';
+  if (balance === 0) return 'settled';
 
   const refDateVal = customer.lastPayment || customer.createdAt;
   const referenceDate = toDateObject(refDateVal);

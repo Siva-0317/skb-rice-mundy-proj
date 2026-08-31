@@ -58,13 +58,13 @@ export const getGlobalLedger = async () => {
   const customersSnap = await getDocs(collection(db, "customers"));
   const customers = customersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  const all = [];
-  for (const c of customers) {
+  const fetchPromises = customers.map(async c => {
     const ledgerSnap = await getDocs(collection(db, "customers", c.id, "ledger"));
-    ledgerSnap.docs.forEach(d => {
-      all.push({ id: d.id, customerId: c.id, customerName: c.name || '—', ...d.data() });
-    });
-  }
+    return ledgerSnap.docs.map(d => ({ id: d.id, customerId: c.id, customerName: c.name || '—', ...d.data() }));
+  });
+
+  const allArrays = await Promise.all(fetchPromises);
+  const all = allArrays.flat();
 
   // Oldest → newest so the cumulative balance builds up correctly.
   all.sort((a, b) => {
@@ -126,14 +126,18 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
 
   if (numBalance > 0) {
     const ledgerRef = doc(collection(db, "customers", customerRef.id, "ledger"));
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
     await setDoc(ledgerRef, {
       type: 'opening',
       desc: 'Opening balance',
       debit: numBalance,
       credit: 0,
       balanceAfter: numBalance,
-      date: serverTimestamp(),
-      createdAt: serverTimestamp()
+      date: midnight,
+      createdAt: serverTimestamp(),
+      seq: -1
     });
   }
 

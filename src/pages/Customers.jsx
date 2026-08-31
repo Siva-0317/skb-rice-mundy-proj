@@ -87,10 +87,10 @@ export default function Customers() {
             const status = getCustomerStatus(customer);
             const badgeStyle = status === 'overdue'
               ? 'bg-debit/10 text-debit border-debit/20'
-              : status === 'active'
+              : (status === 'active' || status === 'advance')
               ? 'bg-credit/10 text-credit border-credit/20'
               : 'bg-textMuted/10 text-textMuted border-border';
-            const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : 'Settled';
+            const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : status === 'advance' ? 'Advance' : 'Settled';
             const balanceAmount = Number(customer.balance) || 0;
             const hasBalance = balanceAmount > 0;
 
@@ -109,11 +109,11 @@ export default function Customers() {
                   </div>
                   <p className="text-sm text-textMuted mt-0.5">{customer.mobile}</p>
 
-                  <p className={`text-2xl font-bold mt-4 ${hasBalance ? 'text-debit' : 'text-textMuted'}`}>
-                    {hasBalance ? `₹${balanceAmount.toLocaleString('en-IN')}` : 'Settled'}
+                  <p className={`text-2xl font-bold mt-4 ${hasBalance ? 'text-debit' : (balanceAmount < 0 ? 'text-credit' : 'text-textMuted')}`}>
+                    {hasBalance ? `₹${balanceAmount.toLocaleString('en-IN')}` : (balanceAmount < 0 ? `₹${Math.abs(balanceAmount).toLocaleString('en-IN')}` : 'Settled')}
                   </p>
                   <p className="text-xs text-textMuted mt-0.5">
-                    {hasBalance ? 'Outstanding balance' : 'No dues'}
+                    {hasBalance ? 'Outstanding balance' : (balanceAmount < 0 ? 'Advance balance' : 'No dues')}
                   </p>
 
                   <p className="text-[11px] text-textMuted/70 mt-2">

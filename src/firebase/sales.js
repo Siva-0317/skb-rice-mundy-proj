@@ -491,3 +491,71 @@ export const getCustomerSales = async (customerId) => {
   });
   return docs;
 };
+
+export const deleteSale = async (saleId) => {
+  const saleSnap = await getDoc(doc(db, "sales", saleId));
+  if (!saleSnap.exists()) throw new Error("Sale not found.");
+  const sale = saleSnap.data();
+
+  // Aggregate items
+  const itemTotalRestored = new Map();
+  const items = sale.items || [];
+  items.forEach(item => {
+    if (item.itemId) {
+      itemTotalRestored.set(item.itemId, (itemTotalRestored.get(item.itemId) || 0) + (Number(item.bags) || 0));
+    }
+  });
+  const uniqueItemIds = Array.from(itemTotalRestored.keys());
+
+  await runTransaction(db, async (transaction) => {
+    const saleRef = doc(db, "sales", saleId);
+    const saleDoc = await transaction.get(saleRef);
+    if (!saleDoc.exists()) throw new Error("Sale not found.");
+    
+    const customerRef = doc(db, "customers", sale.customerId);
+    const customerDoc = await transaction.get(customerRef);
+
+    const itemDocsMap = new Map();
+    for (const itemId of uniqueItemIds) {
+      const ref = doc(db, "items", itemId);
+      itemDocsMap.set(itemId, { ref, doc: await transaction.get(ref) });
+    }
+
+    const sData = saleDoc.data();
+    const totalAmount = Number(sData.totalAmount) || 0;
+    const advancePaid = Number(sData.advance) || 0;
+    const customerData = customerDoc.exists() ? customerDoc.data() : {};
+    const currentCustomerBalance = Number(customerData.balance) || 0;
+    const currentTxnCount = Number(customerData.txnCount) || 0;
+
+    const newCustomerBalance = currentCustomerBalance - totalAmount + advancePaid;
+
+    if (customerDoc.exists()) {
+      transaction.update(customerRef, {
+        balance: newCustomerBalance,
+        txnCount: Math.max(0, currentTxnCount - 1),
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    itemDocsMap.forEach(({ ref, doc: snap }, itemId) => {
+      if (snap.exists()) {
+        const totalToRestore = itemTotalRestored.get(itemId) || 0;
+        const currentStock = Number(snap.data().stock) || 0;
+        transaction.update(ref, { stock: currentStock + totalToRestore });
+      }
+    });
+
+    transaction.delete(saleRef);
+  });
+
+  // After transaction, delete ledger entries
+  const { writeBatch } = await import("firebase/firestore");
+  const ledgerQ = query(collection(db, "customers", sale.customerId, "ledger"), where("refId", "==", saleId));
+  const ledgerSnap = await getDocs(ledgerQ);
+  if (!ledgerSnap.empty) {
+    const batch = writeBatch(db);
+    ledgerSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+};

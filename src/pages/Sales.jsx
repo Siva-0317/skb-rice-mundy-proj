@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Trash2, ChevronDown, ChevronRight, IndianRupee, Pencil } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getItems } from '../firebase/items';
-import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth } from '../firebase/sales';
+import { createSale, editSale, getNextBillNo, getRecentSales, getSalesByMonth, deleteSale } from '../firebase/sales';
 import { useToast } from '../context/ToastContext';
 import { AuthContext } from '../context/AuthContext';
 import { CategoryContext } from '../context/CategoryContext';
@@ -31,6 +31,9 @@ export default function Sales() {
   const [editingSaleId, setEditingSaleId] = useState(null);
   const [editingBillNo, setEditingBillNo] = useState('');
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { showToast } = useToast();
 
   const [selectedMonthDate, setSelectedMonthDate] = useState(() => {
@@ -155,7 +158,9 @@ export default function Sales() {
             const currentStock = masterItem ? (Number(masterItem.stock) || 0) : 0;
             const oldBags = (editingSaleId && editingOldBagsMap[checkItemId]) ? editingOldBagsMap[checkItemId] : 0;
             const effectiveAvailable = currentStock + oldBags;
-            if (Number(updatedRow.bags) <= effectiveAvailable) {
+            if (Number(updatedRow.bags) > effectiveAvailable) {
+              setRowWarnings(prev => ({ ...prev, [id]: `⚠ Only ${effectiveAvailable} bags in stock` }));
+            } else {
               setRowWarnings(prev => {
                 if (!prev[id]) return prev;
                 const c = { ...prev }; delete c[id]; return c;
@@ -290,6 +295,13 @@ export default function Sales() {
 
   const executeSave = async () => {
     if (!isValidSale) return;
+    
+    const todayStr = getISTTodayDateString();
+    if (date > todayStr) {
+      showToast("Sale date cannot be in the future", "error");
+      return;
+    }
+
     setIsSubmitting(true);
     setConfirmModalOpen(false);
     try {
@@ -400,6 +412,28 @@ export default function Sales() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!saleToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteSale(saleToDelete.id);
+      showToast(`Bill ${saleToDelete.billNo} deleted successfully. Stock and balance restored.`, "success");
+      setDeleteModalOpen(false);
+      setSaleToDelete(null);
+      const [recentData, nextBill] = await Promise.all([
+        getSalesByMonth(selectedMonthDate.getFullYear(), selectedMonthDate.getMonth()),
+        getNextBillNo()
+      ]);
+      setRecentSales(recentData || []);
+      setNextBillNo(nextBill);
+    } catch (error) {
+      console.error("Error deleting sale:", error);
+      showToast(error.message || "Failed to delete sale", "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -520,10 +554,12 @@ export default function Sales() {
                   <span className="text-credit">- ₹{numAdvance.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between items-center pt-3 border-t border-border/60">
-                  <span className="font-medium text-textDark">Total Due</span>
-                  <span className="text-2xl font-bold text-debit flex items-center">
+                  <span className="font-medium text-textDark">
+                    {finalTotal < 0 ? 'Advance Balance' : 'Total Due'}
+                  </span>
+                  <span className={`text-2xl font-bold flex items-center ${finalTotal < 0 ? 'text-credit' : 'text-debit'}`}>
                     <IndianRupee className="w-5 h-5 mr-0.5" />
-                    {finalTotal.toLocaleString('en-IN')}
+                    {Math.abs(finalTotal).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -764,15 +800,28 @@ export default function Sales() {
                                   )}
                                 </div>
 
-                                {/* Right: Edit button */}
-                                <button
-                                  onClick={() => handleEditClick(sale)}
-                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/50 hover:bg-gold/5 rounded-lg transition-all"
-                                  title="Edit Sale"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                  Edit
-                                </button>
+                                {/* Right: Edit and Delete buttons */}
+                                <div className="shrink-0 flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleEditClick(sale)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-gold/80 hover:text-gold border border-gold/20 hover:border-gold/50 hover:bg-gold/5 rounded-lg transition-all"
+                                    title="Edit Sale"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSaleToDelete(sale);
+                                      setDeleteModalOpen(true);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-debit hover:text-red-700 border border-debit/20 hover:border-debit/50 hover:bg-debit/5 rounded-lg transition-all"
+                                    title="Delete Sale"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Delete
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -817,6 +866,38 @@ export default function Sales() {
                 className="px-5 py-2 rounded-lg bg-gold text-white text-sm font-medium shadow-sm hover:bg-gold/90 transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? 'Updating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteModalOpen && saleToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-debit/20">
+            <h3 className="font-display text-lg font-semibold text-debit mb-2">
+              Delete Bill {saleToDelete.billNo}?
+            </h3>
+            <p className="text-sm text-textMuted mb-6">
+              This action cannot be undone. It will permanently delete the invoice, restore stock for {saleToDelete.items?.length || 0} item(s), and reverse the customer's balance change.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setDeleteModalOpen(false);
+                  setSaleToDelete(null);
+                }}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-textDark hover:bg-panel/30 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDelete}
+                disabled={isDeleting}
+                className="px-5 py-2 rounded-lg bg-debit text-white text-sm font-medium shadow-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Sale'}
               </button>
             </div>
           </div>

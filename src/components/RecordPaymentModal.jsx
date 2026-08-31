@@ -45,6 +45,11 @@ export default function RecordPaymentModal({ isOpen, onClose, onSuccess, custome
       showToast("Amount must be greater than 0", "error");
       return;
     }
+    const todayStr = getISTTodayDateString();
+    if (paymentDate > todayStr) {
+      showToast("Payment date cannot be in the future", "error");
+      return;
+    }
 
     setIsSubmitting(true);
     try {

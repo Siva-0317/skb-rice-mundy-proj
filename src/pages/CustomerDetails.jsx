@@ -189,10 +189,10 @@ export default function CustomerDetails() {
               const status = getCustomerStatus(customer);
               const badgeStyle = status === 'overdue'
                 ? 'bg-debit/10 text-debit border-debit/20'
-                : status === 'active'
+                : (status === 'active' || status === 'advance')
                 ? 'bg-credit/10 text-credit border-credit/20'
                 : 'bg-textMuted/10 text-textMuted border-border';
-              const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : 'Settled';
+              const badgeText = status === 'overdue' ? 'Overdue' : status === 'active' ? 'Active' : status === 'advance' ? 'Advance' : 'Settled';
               return (
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeStyle}`}>
                   {badgeText}
@@ -205,9 +205,11 @@ export default function CustomerDetails() {
         
         <div className="flex flex-col md:items-end gap-3">
           <div className="text-left md:text-right">
-            <p className="text-sm font-medium text-textMuted mb-1">Current Balance</p>
-            <p className={`text-3xl font-bold ${customerBalance > 0 ? 'text-debit' : 'text-textMuted'}`}>
-              ₹{customerBalance.toLocaleString('en-IN')}
+            <p className="text-sm font-medium text-textMuted mb-1">
+              {customerBalance < 0 ? 'Advance Balance' : 'Current Balance'}
+            </p>
+            <p className={`text-3xl font-bold ${customerBalance > 0 ? 'text-debit' : (customerBalance < 0 ? 'text-credit' : 'text-textMuted')}`}>
+              ₹{Math.abs(customerBalance).toLocaleString('en-IN')}
             </p>
           </div>
 

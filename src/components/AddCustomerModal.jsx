@@ -26,6 +26,15 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess, customerT
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (formData.mobile) {
+      const mobileRegex = /^[0-9\-\+\s]+$/;
+      if (!mobileRegex.test(formData.mobile)) {
+        showToast("Mobile number must contain only numbers, spaces, +, or -", "error");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       if (customerToEdit) {
