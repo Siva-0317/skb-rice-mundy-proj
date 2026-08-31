@@ -46,23 +46,26 @@ export const getItems = async () => {
     };
   });
   
-  // Deduplicate by itemId and name
-  const seenIds = new Set();
-  const seenNames = new Set();
-  return items.filter(item => {
-    if (seenIds.has(item.id)) return false;
-    const nameKey = (item.name || '').trim().toLowerCase();
-    if (seenNames.has(nameKey)) return false;
-    seenIds.add(item.id);
-    seenNames.add(nameKey);
-    return true;
-  });
+  return items;
 };
 
 export const addItem = async (data) => {
+  const cleanName = (data.name || '').trim();
+  if (!cleanName) throw new Error("Item name is required.");
+
+  // Check for duplicates
+  const allItemsSnap = await getDocs(collection(db, "items"));
+  const duplicate = allItemsSnap.docs.find(d => {
+    return (d.data().name || '').trim().toLowerCase() === cleanName.toLowerCase();
+  });
+  if (duplicate) {
+    throw new Error(`An item with the name "${cleanName}" already exists.`);
+  }
+
   const newDocRef = doc(collection(db, "items"));
   const payload = {
     ...data,
+    name: cleanName,
     mrp: Number(data.mrp) || (Number(data.rate) || 0),
     updatedAt: serverTimestamp()
   };
@@ -72,8 +75,21 @@ export const addItem = async (data) => {
 };
 
 export const updateItem = async (itemId, data) => {
+  const cleanName = (data.name || '').trim();
+  if (!cleanName) throw new Error("Item name is required.");
+
+  // Check for duplicates
+  const allItemsSnap = await getDocs(collection(db, "items"));
+  const duplicate = allItemsSnap.docs.find(d => {
+    if (d.id === itemId) return false;
+    return (d.data().name || '').trim().toLowerCase() === cleanName.toLowerCase();
+  });
+  if (duplicate) {
+    throw new Error(`An item with the name "${cleanName}" already exists.`);
+  }
+
   const itemRef = doc(db, "items", itemId);
-  const payload = { ...data, updatedAt: serverTimestamp() };
+  const payload = { ...data, name: cleanName, updatedAt: serverTimestamp() };
   if (payload.mrp !== undefined) payload.mrp = Number(payload.mrp);
   delete payload.rate;
   await updateDoc(itemRef, payload);

@@ -80,9 +80,9 @@ export default function Ledger() {
   const isFiltered = !!(fromDate || toDate);
   const clearFilter = () => { setFromDate(''); setToDate(''); };
 
-  // Total Receivables is the current business-wide outstanding — the newest overall
+  // Net Balance is the current business-wide net outstanding — the newest overall
   // balance — independent of any date filter applied to the view below.
-  const totalReceivables = entries.length > 0 ? Number(entries[0].globalBalanceAfter) || 0 : 0;
+  const netBalance = entries.length > 0 ? Number(entries[0].globalBalanceAfter) || 0 : 0;
   const totalCount = filteredEntries.length;
   const start = (currentPage - 1) * PAGE_SIZE;
   const pageEntries = filteredEntries.slice(start, start + PAGE_SIZE);
@@ -101,9 +101,9 @@ export default function Ledger() {
           </p>
         </div>
         <div className="text-left sm:text-right">
-          <p className="text-sm font-medium text-textMuted mb-1">Total Receivables</p>
-          <p className={`text-3xl font-bold ${totalReceivables > 0 ? 'text-debit' : 'text-textMuted'}`}>
-            ₹{totalReceivables.toLocaleString('en-IN')}
+          <p className="text-sm font-medium text-textMuted mb-1">Net Balance</p>
+          <p className={`text-3xl font-bold ${netBalance > 0 ? 'text-debit' : 'text-textMuted'}`}>
+            ₹{netBalance.toLocaleString('en-IN')}
           </p>
         </div>
       </div>

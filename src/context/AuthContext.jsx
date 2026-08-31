@@ -10,15 +10,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const handleUnload = () => {
-      if (auth.currentUser) {
-        signOut(auth);
-      }
-    };
-
-    window.addEventListener('beforeunload', handleUnload);
-    window.addEventListener('pagehide', handleUnload);
-
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setLoading(true);
@@ -42,8 +33,6 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      window.removeEventListener('pagehide', handleUnload);
       unsubscribe();
     };
   }, []);

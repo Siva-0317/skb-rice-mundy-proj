@@ -92,19 +92,24 @@ export const getGlobalLedger = async () => {
 export const addCustomer = async ({ name, mobile, openingBalance }) => {
   const numBalance = Number(openingBalance) || 0;
   const cleanMobile = (mobile !== undefined && mobile !== null) ? String(mobile).trim() : '';
-  const cleanName = name.trim();
+  const cleanName = (name || '').trim();
+
+  if (!cleanName) throw new Error("Customer name is required.");
 
   // Check for duplicates
-  const nameQuery = query(collection(db, "customers"), where("name", "==", cleanName));
-  const nameSnap = await getDocs(nameQuery);
-  if (!nameSnap.empty) {
+  const allCustomersSnap = await getDocs(collection(db, "customers"));
+  const duplicateName = allCustomersSnap.docs.find(d => {
+    return (d.data().name || '').trim().toLowerCase() === cleanName.toLowerCase();
+  });
+  if (duplicateName) {
     throw new Error("Customer with this name already exists.");
   }
 
   if (cleanMobile) {
-    const mobileQuery = query(collection(db, "customers"), where("mobile", "==", cleanMobile));
-    const mobileSnap = await getDocs(mobileQuery);
-    if (!mobileSnap.empty) {
+    const duplicateMobile = allCustomersSnap.docs.find(d => {
+      return (d.data().mobile || '').trim() === cleanMobile;
+    });
+    if (duplicateMobile) {
       throw new Error("Customer with this mobile already exists.");
     }
   }
@@ -137,20 +142,25 @@ export const addCustomer = async ({ name, mobile, openingBalance }) => {
 
 export const updateCustomer = async (id, { name, mobile }) => {
   const cleanMobile = (mobile !== undefined && mobile !== null) ? String(mobile).trim() : '';
-  const cleanName = name.trim();
+  const cleanName = (name || '').trim();
+
+  if (!cleanName) throw new Error("Customer name is required.");
 
   // Check for duplicates excluding current customer
-  const nameQuery = query(collection(db, "customers"), where("name", "==", cleanName));
-  const nameSnap = await getDocs(nameQuery);
-  const duplicateName = nameSnap.docs.find(doc => doc.id !== id);
+  const allCustomersSnap = await getDocs(collection(db, "customers"));
+  const duplicateName = allCustomersSnap.docs.find(d => {
+    if (d.id === id) return false;
+    return (d.data().name || '').trim().toLowerCase() === cleanName.toLowerCase();
+  });
   if (duplicateName) {
     throw new Error("Customer with this name already exists.");
   }
 
   if (cleanMobile) {
-    const mobileQuery = query(collection(db, "customers"), where("mobile", "==", cleanMobile));
-    const mobileSnap = await getDocs(mobileQuery);
-    const duplicateMobile = mobileSnap.docs.find(doc => doc.id !== id);
+    const duplicateMobile = allCustomersSnap.docs.find(d => {
+      if (d.id === id) return false;
+      return (d.data().mobile || '').trim() === cleanMobile;
+    });
     if (duplicateMobile) {
       throw new Error("Customer with this mobile already exists.");
     }

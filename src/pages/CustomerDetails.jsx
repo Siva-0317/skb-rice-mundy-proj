@@ -220,7 +220,6 @@ export default function CustomerDetails() {
             </button>
             <button
               onClick={() => setIsPaymentModalOpen(true)}
-              disabled={customerBalance <= 0}
               className="bg-gold text-white px-6 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Record Payment
