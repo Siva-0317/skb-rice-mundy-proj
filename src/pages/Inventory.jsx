@@ -5,6 +5,8 @@ import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import { LOW_STOCK_THRESHOLD } from '../utils/constants';
 import AddItemModal from '../components/AddItemModal';
+import { AuthContext } from '../context/AuthContext';
+import { useContext } from 'react';
 
 export default function Inventory() {
   const [categories, setCategories] = useState([]);
@@ -17,9 +19,11 @@ export default function Inventory() {
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [newStock, setNewStock] = useState('');
+  const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { showToast } = useToast();
+  const { user } = useContext(AuthContext);
 
   const fetchData = async () => {
     try {
@@ -71,15 +75,20 @@ export default function Inventory() {
     setIsModalOpen(false);
     setEditingItem(null);
     setNewStock('');
+    setReason('');
   };
 
   const handleAdjustStock = async (e) => {
     e.preventDefault();
     if (!editingItem) return;
+    if (!reason.trim()) {
+      showToast("Please provide a reason for the adjustment", "error");
+      return;
+    }
     
     setIsSubmitting(true);
     try {
-      await adjustStock(editingItem.id, Number(newStock));
+      await adjustStock(editingItem.id, Number(newStock), editingItem.stock, reason, user?.email);
       showToast(`Stock updated for ${editingItem.name}`, "success");
       await fetchData();
       handleCloseModal();
@@ -303,6 +312,16 @@ export default function Inventory() {
                     value={newStock}
                     onChange={(e) => setNewStock(e.target.value)}
                     className="w-full px-4 py-2.5 text-base font-medium rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 bg-panel/30 min-h-[44px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-textDark mb-1">Reason for adjustment <span className="text-debit">*</span></label>
+                  <textarea
+                    required
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="e.g., Physical count mismatch, Damaged goods..."
+                    className="w-full px-4 py-2.5 text-base rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 bg-white min-h-[80px] resize-none"
                   />
                 </div>
               </div>

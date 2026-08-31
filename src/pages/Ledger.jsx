@@ -63,13 +63,49 @@ export default function Ledger() {
   // at each row, exactly like a bank statement filtered to a period.
   const filteredEntries = useMemo(() => {
     if (!fromDate && !toDate) return entries;
-    return entries.filter(e => {
+    
+    let opBal = 0;
+    if (fromDate) {
+      const prevEntry = entries.find(e => dayStr(e.date) < fromDate);
+      opBal = prevEntry ? Number(prevEntry.globalBalanceAfter) : 0;
+    }
+    
+    const items = entries.filter(e => {
       const day = dayStr(e.date);
       if (!day) return false;
       if (fromDate && day < fromDate) return false;
       if (toDate && day > toDate) return false;
       return true;
     });
+
+    let clBal = opBal;
+    if (items.length > 0) {
+      clBal = Number(items[0].globalBalanceAfter) || 0;
+    } else if (toDate) {
+      const prev = entries.find(e => dayStr(e.date) <= toDate);
+      clBal = prev ? Number(prev.globalBalanceAfter) : 0;
+      opBal = clBal;
+    }
+
+    const openingRow = {
+      id: 'synthetic-opening',
+      isSynthetic: true,
+      desc: 'Opening Balance for period',
+      globalBalanceAfter: opBal,
+      customerName: '—',
+      date: fromDate ? new Date(fromDate) : (items.length > 0 ? items[items.length - 1].date : new Date())
+    };
+
+    const closingRow = {
+      id: 'synthetic-closing',
+      isSynthetic: true,
+      desc: 'Closing Balance for period',
+      globalBalanceAfter: clBal,
+      customerName: '—',
+      date: toDate ? new Date(toDate) : (items.length > 0 ? items[0].date : new Date())
+    };
+
+    return [closingRow, ...items, openingRow];
   }, [entries, fromDate, toDate]);
 
   // Reset to first page whenever the filter changes.
@@ -167,7 +203,29 @@ export default function Ledger() {
                   </td>
                 </tr>
               ) : (
-                pageEntries.map(entry => (
+                pageEntries.map(entry => {
+                  if (entry.isSynthetic) {
+                    return (
+                      <tr
+                        key={entry.id}
+                        className="border-b border-border bg-panel/30 transition-colors"
+                      >
+                        <td className="py-3 px-6 text-sm text-textMuted whitespace-nowrap">{formatDate(entry.date)}</td>
+                        <td className="py-3 px-6 text-sm font-medium text-textDark text-center">—</td>
+                        <td className="py-3 px-6 text-sm font-bold text-textDark">{entry.desc}</td>
+                        <td className="py-3 px-6 text-sm text-right font-medium text-debit">—</td>
+                        <td className="py-3 px-6 text-sm text-right font-medium text-credit">—</td>
+                        <td className="py-3 px-6 text-sm text-right font-bold text-brownDark">
+                          {Number(entry.globalBalanceAfter || 0) < 0
+                            ? `-₹${Math.abs(Number(entry.globalBalanceAfter || 0)).toLocaleString('en-IN')}`
+                            : `₹${Number(entry.globalBalanceAfter || 0).toLocaleString('en-IN')}`
+                          }
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return (
                   <tr
                     key={`${entry.customerId}-${entry.id}`}
                     onClick={() => navigate(`/customers/${entry.customerId}`)}
@@ -191,7 +249,7 @@ export default function Ledger() {
                       }
                     </td>
                   </tr>
-                ))
+                )})
               )}
             </tbody>
           </table>

@@ -100,9 +100,29 @@ export const setItemActive = async (itemId, isActive) => {
   await updateDoc(itemRef, { active: isActive });
 };
 
-export const adjustStock = async (itemId, newStock) => {
+export const adjustStock = async (itemId, newStock, oldStock, reason, userEmail) => {
+  if (!reason || reason.trim() === '') {
+    throw new Error('Reason is required for stock adjustment');
+  }
+
   const itemRef = doc(db, "items", itemId);
-  await updateDoc(itemRef, { stock: Number(newStock), updatedAt: serverTimestamp() });
+  const adjustmentRef = doc(collection(db, "inventory_adjustments"));
+  
+  const batch = writeBatch(db);
+  
+  batch.update(itemRef, { stock: Number(newStock), updatedAt: serverTimestamp() });
+  
+  batch.set(adjustmentRef, {
+    itemId,
+    oldStock: Number(oldStock),
+    newStock: Number(newStock),
+    difference: Number(newStock) - Number(oldStock),
+    reason: reason.trim(),
+    adjustedBy: userEmail || 'Unknown',
+    timestamp: serverTimestamp()
+  });
+
+  await batch.commit();
 };
 
 let isSeeding = false;
