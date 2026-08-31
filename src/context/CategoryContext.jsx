@@ -1,5 +1,6 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import { getCategories } from '../firebase/items';
+import { AuthContext } from './AuthContext';
 
 export const CategoryContext = createContext();
 
@@ -7,6 +8,8 @@ export const CategoryProvider = ({ children }) => {
   const [categories, setCategories] = useState([]);
   const [categoryMap, setCategoryMap] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  const { user } = useContext(AuthContext);
 
   const refreshCategories = async () => {
     try {
@@ -26,8 +29,14 @@ export const CategoryProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    refreshCategories();
-  }, []);
+    if (user) {
+      refreshCategories();
+    } else {
+      setCategories([]);
+      setCategoryMap({});
+      setLoading(false);
+    }
+  }, [user]);
 
   return (
     <CategoryContext.Provider value={{ categories, categoryMap, loading, refreshCategories }}>

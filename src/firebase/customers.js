@@ -232,8 +232,9 @@ export const deleteCustomer = async (customerId) => {
   
   salesSnap.docs.forEach(saleDoc => {
     const data = saleDoc.data();
-    if (data.rows && Array.isArray(data.rows)) {
-      data.rows.forEach(row => {
+    const itemsArray = data.items || data.rows || [];
+    if (Array.isArray(itemsArray)) {
+      itemsArray.forEach(row => {
         if (row.itemId && row.bags) {
           itemRestorations[row.itemId] = (itemRestorations[row.itemId] || 0) + Number(row.bags);
         }

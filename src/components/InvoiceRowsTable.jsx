@@ -132,6 +132,7 @@ export default function InvoiceRowsTable({ rows, items, onAddRow, onRemoveRow, o
                       value={row.bags}
                       onChange={(e) => onRowChange(row.id, 'bags', e.target.value)}
                       onBlur={() => onRowBlur && onRowBlur(row.id)}
+                      onFocus={(e) => e.target.select()}
                       placeholder="0"
                       disabled={!row.itemId}
                       className={`w-full p-2 rounded-md border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none ${
@@ -156,6 +157,7 @@ export default function InvoiceRowsTable({ rows, items, onAddRow, onRemoveRow, o
                         step="0.1"
                         value={row.bagKg || ''}
                         onChange={(e) => onRowChange(row.id, 'bagKg', e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="0"
                         disabled={!row.itemId}
                         className="w-full p-2 pr-8 rounded-md border border-border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none focus:ring-2 focus:ring-gold/50"
@@ -179,6 +181,7 @@ export default function InvoiceRowsTable({ rows, items, onAddRow, onRemoveRow, o
                       step="0.01"
                       value={row.mrp !== undefined && row.mrp !== null ? row.mrp : (row.rate || '')}
                       onChange={(e) => onRowChange(row.id, 'mrp', e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       disabled={!row.itemId}
                       placeholder="MRP"
                       className="w-full p-2 rounded-md border border-border text-base sm:text-sm disabled:bg-panel min-h-[44px] focus:outline-none focus:ring-2 focus:ring-gold/50 font-semibold"

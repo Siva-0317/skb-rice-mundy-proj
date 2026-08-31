@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, X, Pencil, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, X, Pencil, Trash2 } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { getCustomer, getCustomerLedgerPaginated, recordPayment } from '../firebase/customers';
@@ -338,7 +338,7 @@ export default function CustomerDetails() {
                           }
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {(entry.type === 'payment' || entry.type === 'opening') ? (
+                          {(entry.type === 'payment' || entry.type === 'opening') && (
                             <button
                               onClick={() => setDeletingEntryId(entry.id)}
                               className="p-1.5 text-textMuted hover:text-debit transition-colors rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
@@ -346,10 +346,6 @@ export default function CustomerDetails() {
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          ) : (
-                            <div className="p-1.5 text-textMuted/50 inline-flex" title="Delete via Sales page">
-                              <Info className="w-4 h-4" />
-                            </div>
                           )}
                         </td>
                       </tr>

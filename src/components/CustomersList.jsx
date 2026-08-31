@@ -132,7 +132,7 @@ export default function CustomersList() {
                           {customer.name}
                         </span>
                         <div className="text-[11px] text-textMuted font-normal mt-0.5">
-                          {customer.txnCount || 0} transactions · Last payment {formatDate(customer.lastPayment)}
+                          {customer.txnCount === 1 ? '1 transaction' : `${customer.txnCount || 0} transactions`} · Last payment {formatDate(customer.lastPayment)}
                         </div>
                       </td>
                       <td className="py-3.5 px-6 text-sm text-textMuted">{customer.mobile || '-'}</td>
