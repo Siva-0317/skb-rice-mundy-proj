@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCategories, getItems, adjustStock } from '../firebase/items';
+import { getCategories, getItems, getUniqueActiveItems, adjustStock } from '../firebase/items';
 import { Pencil, ChevronDown, ChevronRight, X, AlertTriangle, Package, Boxes, AlertCircle, Plus } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
@@ -28,21 +28,7 @@ export default function Inventory() {
   const fetchData = async () => {
     try {
       const cats = await getCategories();
-      const allItems = await getItems();
-      
-      // Deduplicate by itemId and item name before rendering
-      const seenIds = new Set();
-      const seenNames = new Set();
-      const uniqueItems = allItems.filter(i => {
-        if (seenIds.has(i.id)) return false;
-        const n = (i.name || '').trim().toLowerCase();
-        if (seenNames.has(n)) return false;
-        seenIds.add(i.id);
-        seenNames.add(n);
-        return true;
-      });
-
-      const activeItems = uniqueItems.filter(i => i.active !== false); // Only active items
+      const activeItems = await getUniqueActiveItems();
       
       setCategories(cats);
       setItems(activeItems);

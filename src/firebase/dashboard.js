@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from "firebase/firestore";
 import { db } from "./config";
+import { getUniqueActiveItems } from "./items";
 import { getCustomerStatus } from "../utils/customerStatus";
 import { getISTTodayAsUtcMidnight, toMillis, toDateObj } from "../utils/dateIST";
 import { LOW_STOCK_THRESHOLD } from "../utils/constants";
@@ -79,7 +80,7 @@ export const getTodayStats = async () => {
   const todaySalesCount = salesSnap.docs.length;
 
   // Overdue Customers & Total Outstanding
-  const custQ = query(collection(db, "customers"), where("balance", ">", 0));
+  const custQ = query(collection(db, "customers"));
   const custSnap = await getDocs(custQ);
   let totalOutstanding = 0;
   let overdueAmount = 0;
@@ -96,10 +97,7 @@ export const getTodayStats = async () => {
   });
 
   // Low Stock Items & Current Stock
-  const itemsSnap = await getDocs(collection(db, "items"));
-  const activeItems = itemsSnap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(i => i.active !== false);
+  const activeItems = await getUniqueActiveItems();
 
   let currentStockBags = 0;
   activeItems.forEach(i => {

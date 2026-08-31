@@ -49,6 +49,23 @@ export const getItems = async () => {
   return items;
 };
 
+export const getUniqueActiveItems = async () => {
+  const allItems = await getItems();
+  
+  const seenIds = new Set();
+  const seenNames = new Set();
+  const uniqueItems = allItems.filter(i => {
+    if (seenIds.has(i.id)) return false;
+    const n = (i.name || '').trim().toLowerCase();
+    if (seenNames.has(n)) return false;
+    seenIds.add(i.id);
+    seenNames.add(n);
+    return true;
+  });
+
+  return uniqueItems.filter(i => i.active !== false); // Only active items
+};
+
 export const addItem = async (data) => {
   const cleanName = (data.name || '').trim();
   if (!cleanName) throw new Error("Item name is required.");

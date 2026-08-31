@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { getCategories } from "./items";
+import { getCategories, getUniqueActiveItems } from "./items";
 import { db } from "./config";
 import { getCustomerStatus } from "../utils/customerStatus";
 import { businessDayStartUtc, businessDayEndUtc, getISTTodayAsUtcMidnight, getISTDateString } from "../utils/dateIST";
@@ -110,8 +110,8 @@ export const getCustomerWiseSalesReport = async ({ from, to }) => {
 
 // CARD 3: Total Inventory Data
 export const getTotalInventoryReport = async () => {
-  const [itemsSnap, catsSnap] = await Promise.all([
-    getDocs(collection(db, "items")),
+  const [activeItems, catsSnap] = await Promise.all([
+    getUniqueActiveItems(),
     getDocs(collection(db, "categories"))
   ]);
 
@@ -122,8 +122,7 @@ export const getTotalInventoryReport = async () => {
   });
 
   const rows = [];
-  itemsSnap.docs.forEach(docSnap => {
-    const item = { id: docSnap.id, ...docSnap.data() };
+  activeItems.forEach(item => {
     const stockBags = Number(item.stock) || 0;
     const bagKg = Number(item.bagKg) || 0;
     const mrp = item.mrp !== undefined && item.mrp !== null ? Number(item.mrp) : (Number(item.rate) || 0);
@@ -685,8 +684,8 @@ export const getQuickStats = async () => {
   let customersWithDues = 0;
   customersSnap.docs.forEach(docSnap => {
     const bal = Number(docSnap.data().balance) || 0;
+    totalOutstanding += bal;
     if (bal > 0) {
-      totalOutstanding += bal;
       customersWithDues += 1;
     }
   });

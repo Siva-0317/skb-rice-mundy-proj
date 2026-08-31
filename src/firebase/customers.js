@@ -235,8 +235,9 @@ export const deleteCustomer = async (customerId) => {
     const itemsArray = data.items || data.rows || [];
     if (Array.isArray(itemsArray)) {
       itemsArray.forEach(row => {
-        if (row.itemId && row.bags) {
-          itemRestorations[row.itemId] = (itemRestorations[row.itemId] || 0) + Number(row.bags);
+        const bagsToAdd = Number(row.bags || row.qty || 0);
+        if (row.itemId && bagsToAdd > 0) {
+          itemRestorations[row.itemId] = (itemRestorations[row.itemId] || 0) + bagsToAdd;
         }
       });
     }
