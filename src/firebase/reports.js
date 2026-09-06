@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { getCategories, getUniqueActiveItems } from "./items";
+import { getCategories, getActiveItems } from "./items";
 import { db } from "./config";
 import { getCustomerStatus } from "../utils/customerStatus";
 import { businessDayStartUtc, businessDayEndUtc, getISTTodayAsUtcMidnight, getISTDateString } from "../utils/dateIST";
@@ -111,7 +111,7 @@ export const getCustomerWiseSalesReport = async ({ from, to }) => {
 // CARD 3: Total Inventory Data
 export const getTotalInventoryReport = async () => {
   const [activeItems, catsSnap] = await Promise.all([
-    getUniqueActiveItems(),
+    getActiveItems(),
     getDocs(collection(db, "categories"))
   ]);
 

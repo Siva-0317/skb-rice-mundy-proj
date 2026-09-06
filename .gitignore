@@ -30,3 +30,15 @@ dist-ssr
 
 # Claude Code local harness config
 .claude/
+
+# Local test credentials — real sign-in details, never commit
+.env.test
+.env.*.local
+
+# Firebase CLI cache and local build output
+.firebase/
+test-results/
+playwright-report/
+
+# Editor / tool leftovers
+*.bak

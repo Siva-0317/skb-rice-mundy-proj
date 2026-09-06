@@ -117,7 +117,7 @@ export default function Customers() {
                   </p>
 
                   <p className="text-[11px] text-textMuted/70 mt-2">
-                    {customer.txnCount || 0} transactions · Last payment {formatDate(customer.lastPayment)}
+                    {customer.txnCount === 1 ? '1 transaction' : `${customer.txnCount || 0} transactions`} · Last payment {formatDate(customer.lastPayment)}
                   </p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-textMuted shrink-0" />

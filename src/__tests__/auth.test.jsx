@@ -176,7 +176,12 @@ describe('1. Authentication & Session Suite', () => {
     expect(signOutUser).toHaveBeenCalled();
   });
 
-  it('auto-logout on tab close executes signOut when beforeunload event is dispatched', async () => {
+  // This previously asserted the opposite — that a beforeunload listener signed the user
+  // out — which is exactly what made a page refresh dump the operator back to the login
+  // screen mid-invoice. Signing out on unload also fires on ordinary navigation and tab
+  // close, so it can never distinguish "leaving" from "reloading". The listener was
+  // removed; this test now guards against it coming back.
+  it('does NOT sign out on beforeunload, so a refresh keeps the session', async () => {
     onAuthStateChanged.mockImplementation((auth, cb) => {
       cb({ uid: 'user-123', email: 'owner@skbmundy.com' });
       return () => {};
@@ -191,6 +196,6 @@ describe('1. Authentication & Session Suite', () => {
     await act(async () => {
       window.dispatchEvent(new Event('beforeunload'));
     });
-    expect(signOut).toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 });

@@ -82,7 +82,7 @@ export default function ItemsList() {
     setEditingItem(null);
   };
 
-  const handleDeleteSuccess = (deletedItemId) => {
+  const handleDeleteSuccess = () => {
     fetchData();
   };
 
@@ -107,12 +107,19 @@ export default function ItemsList() {
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold text-textDark">Item Masters</h2>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-gold text-white px-4 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium text-sm shadow-sm"
-        >
-          <Plus className="w-4 h-4" /> Add Item
-        </button>
+        {/* Item master records are owner-only (see firestore.rules). Hiding the controls
+            for other roles is kinder than letting them click through to a permission
+            error. Stock movements are unaffected — anyone can sell, purchase and adjust. */}
+        {isOwner ? (
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 bg-gold text-white px-4 py-2 rounded-lg hover:bg-gold/90 transition-colors font-medium text-sm shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Add Item
+          </button>
+        ) : (
+          <span className="text-xs text-textMuted">Item master changes require an owner account</span>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
@@ -166,9 +173,10 @@ export default function ItemsList() {
                       <td className="py-3 px-6 text-sm text-textDark text-right">{item.stock}</td>
                       <td className="py-3 px-6 text-center">
                         <div className="group/toggle relative inline-block">
-                          <button 
+                          <button
                             onClick={() => handleToggleActive(item)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.active ? 'bg-credit' : 'bg-textMuted/40'}`}
+                            disabled={!isOwner}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.active ? 'bg-credit' : 'bg-textMuted/40'} ${!isOwner ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.active ? 'translate-x-6' : 'translate-x-1'}`} />
                           </button>
@@ -179,16 +187,22 @@ export default function ItemsList() {
                       </td>
                         <td className="py-3 px-6 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => handleOpenModal(item)} className="p-2.5 text-textMuted hover:text-gold transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center">
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => setItemToDelete(item)}
-                              className="p-2.5 text-red-400 hover:text-red-600 transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {isOwner ? (
+                              <>
+                                <button onClick={() => handleOpenModal(item)} className="p-2.5 text-textMuted hover:text-gold transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center" title="Edit Item">
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setItemToDelete(item)}
+                                  className="p-2.5 text-red-400 hover:text-red-600 transition-colors min-w-[44px] min-h-[44px] inline-flex items-center justify-center"
+                                  title="Delete Item"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-textMuted">—</span>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -209,7 +223,7 @@ export default function ItemsList() {
         categories={categories}
         editingItem={editingItem}
       />
-      
+
       <DeleteItemModal
         isOpen={!!itemToDelete}
         item={itemToDelete}

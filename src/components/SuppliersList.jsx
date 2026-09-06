@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Edit2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getSuppliers } from '../firebase/suppliers';
+import { getSuppliers, deleteSupplier } from '../firebase/suppliers';
 import { useToast } from '../context/ToastContext';
 import AddSupplierModal from './AddSupplierModal';
 import { useContext } from 'react';
 import { CategoryContext } from '../context/CategoryContext';
+import { AuthContext } from '../context/AuthContext';
+import { canEditMasters } from '../utils/permissions';
 
 export default function SuppliersList() {
   const { categoryMap } = useContext(CategoryContext);
@@ -14,7 +16,27 @@ export default function SuppliersList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [supplierToEdit, setSupplierToEdit] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const { showToast } = useToast();
+  const { user } = useContext(AuthContext);
+  const isOwner = canEditMasters(user?.role);
+
+  // Suppliers with purchase history are part of the audit trail; deleteSupplier
+  // refuses those and the reason is surfaced to the operator verbatim.
+  const handleDeleteClick = async (supplier) => {
+    const ok = window.confirm(`Delete supplier '${supplier.name}'? This cannot be undone.`);
+    if (!ok) return;
+    setDeletingId(supplier.id);
+    try {
+      await deleteSupplier(supplier.id);
+      showToast(`Supplier '${supplier.name}' deleted`);
+      await fetchSuppliers();
+    } catch (error) {
+      showToast(error.message || 'Failed to delete supplier', 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const fetchSuppliers = async () => {
     try {
@@ -153,13 +175,25 @@ export default function SuppliersList() {
                         )}
                       </td>
                       <td className="py-3.5 px-6 text-center">
-                        <button
-                          onClick={() => handleEditClick(supplier)}
-                          className="p-1.5 text-textMuted hover:text-brownDark transition-colors rounded-lg hover:bg-panel"
-                          title="Edit Supplier"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleEditClick(supplier)}
+                            className="p-1.5 text-textMuted hover:text-brownDark transition-colors rounded-lg hover:bg-panel"
+                            title="Edit Supplier"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          {isOwner && (
+                            <button
+                              onClick={() => handleDeleteClick(supplier)}
+                              disabled={deletingId === supplier.id}
+                              className="p-1.5 text-red-400 hover:text-red-600 transition-colors rounded-lg hover:bg-panel disabled:opacity-40"
+                              title="Delete Supplier"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

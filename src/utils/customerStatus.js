@@ -7,7 +7,13 @@ export const getCustomerStatus = (customer) => {
   if (balance < 0) return 'advance';
   if (balance === 0) return 'settled';
 
-  const refDateVal = customer.lastPayment || customer.createdAt;
+  // The overdue clock runs from the customer's last activity, not from the day their
+  // profile was created. Using createdAt alone meant every customer who had ever
+  // carried a balance for longer than the threshold was permanently flagged overdue —
+  // including one who bought yesterday — which made the flag meaningless. Falling back
+  // through lastPayment -> lastPurchase -> createdAt means a fresh transaction resets
+  // the clock, so "overdue" reads as "nothing has moved on this account in N days".
+  const refDateVal = customer.lastPayment || customer.lastPurchase || customer.createdAt;
   const referenceDate = toDateObject(refDateVal);
 
   if (!referenceDate) {

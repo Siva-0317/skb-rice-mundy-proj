@@ -49,21 +49,44 @@ export const getItems = async () => {
   return items;
 };
 
-export const getUniqueActiveItems = async () => {
+// Every active item, with no de-duplication.
+//
+// This used to drop any item whose name matched one already seen (case-insensitively),
+// keeping whichever happened to sort first. That silently removed real stock from every
+// figure built on it — the Dashboard, the Inventory page and the Total Inventory report
+// — while the reports built straight off the `items` collection kept counting it, so the
+// same business reported two different stock levels. Duplicate item names are a data
+// problem to be merged at source, not a display problem to be hidden: an item holding
+// bags must be counted wherever stock is counted.
+export const getActiveItems = async () => {
   const allItems = await getItems();
-  
-  const seenIds = new Set();
-  const seenNames = new Set();
-  const uniqueItems = allItems.filter(i => {
-    if (seenIds.has(i.id)) return false;
-    const n = (i.name || '').trim().toLowerCase();
-    if (seenNames.has(n)) return false;
-    seenIds.add(i.id);
-    seenNames.add(n);
-    return true;
-  });
 
-  return uniqueItems.filter(i => i.active !== false); // Only active items
+  const seenIds = new Set();
+  return allItems.filter(i => {
+    if (seenIds.has(i.id)) return false;   // guard against a repeated doc id only
+    seenIds.add(i.id);
+    return i.active !== false;
+  });
+};
+
+// Kept as an alias so existing call sites keep working; both now return the full
+// active set. Prefer getActiveItems in new code.
+export const getUniqueActiveItems = getActiveItems;
+
+// Item names that collide case-insensitively across active items. Used to warn the
+// operator where two records represent the same physical product, so they can be
+// merged instead of quietly diverging.
+export const getDuplicateItemNames = async () => {
+  const items = await getActiveItems();
+  const counts = new Map();
+  items.forEach(i => {
+    const key = (i.name || '').trim().toLowerCase();
+    if (!key) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .filter(([, n]) => n > 1)
+    .map(([key]) => key);
 };
 
 export const addItem = async (data) => {

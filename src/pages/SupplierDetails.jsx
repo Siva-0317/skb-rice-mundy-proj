@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone, RefreshCw, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, RefreshCw, Pencil, X, Trash2 } from 'lucide-react';
 import { getSupplier, getSupplierLedgerPaginated } from '../firebase/suppliers';
 import { getSupplierPurchases } from '../firebase/purchases';
-import { deleteLedgerEntry } from '../firebase/ledger';
+import { editLedgerEntry, deleteLedgerEntry } from '../firebase/ledger';
+import { PAYMENT_MODES } from '../utils/constants';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
 import RecordSupplierPaymentModal from '../components/RecordSupplierPaymentModal';
@@ -28,6 +29,12 @@ export default function SupplierDetails() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState(null);
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editMode, setEditMode] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   const fetchLedgerPage = async (pageTarget = 1) => {
     try {
@@ -69,7 +76,7 @@ export default function SupplierDetails() {
       showToast(`Entry deleted. Balance updated to ₹${result.newBalance.toLocaleString('en-IN')}.`, "success");
       setDeletingEntryId(null);
       setSupplier(prev => ({ ...prev, balance: result.newBalance }));
-      
+
       if (ledger.length === 1 && currentPage > 1) {
         fetchLedgerPage(currentPage - 1);
       } else {
@@ -79,6 +86,46 @@ export default function SupplierDetails() {
       console.error("Error deleting entry:", error);
       showToast(error.message || "Failed to delete entry", "error");
       setDeletingEntryId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // A supplier payment keyed wrongly can also be corrected in place, which reposts
+  // the entry and recomputes the running balance. Only the most recent payment is
+  // editable, because every later balance is derived from it.
+  const handleOpenEditPayment = (entry) => {
+    if (ledger[0]?.id !== entry.id) {
+      showToast("Only the most recent payment can be edited", "error");
+      return;
+    }
+    setEditingPayment(entry);
+    setEditAmount(String(entry.debit || entry.credit || ''));
+    setEditMode(entry.mode || 'Cash');
+    setEditNote(entry.note || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditPayment = async (e) => {
+    e.preventDefault();
+    if (!editMode) {
+      showToast("Please select a payment mode", "error");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await editLedgerEntry('supplier', id, editingPayment.id, {
+        amount: editAmount,
+        mode: editMode,
+        note: editNote
+      });
+      showToast("Payment updated successfully!");
+      setIsEditModalOpen(false);
+      setEditingPayment(null);
+      await fetchSupplierData();
+    } catch (error) {
+      console.error("Error updating payment:", error);
+      showToast(error.message || "Failed to update payment", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -239,7 +286,7 @@ export default function SupplierDetails() {
                           </tr>
                         );
                       }
-                      
+
                       return (
                       <tr key={entry.id} className="hover:bg-panel/50 transition-colors group">
                         <td className="py-3.5 px-6 text-sm text-textMuted font-medium">{formatDate(entry.date)}</td>
@@ -259,19 +306,26 @@ export default function SupplierDetails() {
                           }
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          {(entry.type === 'payment' || entry.type === 'opening') ? (
-                            <button
-                              onClick={() => setDeletingEntryId(entry.id)}
-                              className="p-1.5 text-textMuted hover:text-debit transition-colors rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
-                              title="Delete Entry"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <div className="p-1.5 text-textMuted/50 inline-flex" title="Delete via Purchase page">
-                              <Info className="w-4 h-4" />
-                            </div>
-                          )}
+                          <div className="inline-flex items-center gap-1">
+                            {entry.type === 'payment' && ledger[0]?.id === entry.id && (
+                              <button
+                                onClick={() => handleOpenEditPayment(entry)}
+                                className="p-1.5 text-textMuted hover:text-gold transition-colors rounded hover:bg-panel/50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
+                                title="Edit Payment"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            )}
+                            {(entry.type === 'payment' || entry.type === 'opening') && (
+                              <button
+                                onClick={() => setDeletingEntryId(entry.id)}
+                                className="p-1.5 text-textMuted hover:text-debit transition-colors rounded hover:bg-red-50 opacity-0 group-hover:opacity-100 focus:opacity-100 inline-flex"
+                                title="Delete Entry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -358,6 +412,78 @@ export default function SupplierDetails() {
         supplierName={supplier.name}
         supplierBalance={supplier.balance}
       />
+
+      {/* Edit Payment Modal */}
+      {isEditModalOpen && editingPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-border flex flex-col">
+            <div className="flex justify-between items-center p-5 border-b border-border">
+              <h3 className="font-display font-semibold text-lg text-brownDark">Edit Payment</h3>
+              <button onClick={() => { setIsEditModalOpen(false); setEditingPayment(null); }} className="text-textMuted hover:text-textDark transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPayment} className="p-5 overflow-y-auto space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Payment Mode <span className="text-debit">*</span></label>
+                <select
+                  required
+                  value={editMode}
+                  onChange={(e) => setEditMode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px] bg-white"
+                >
+                  <option value="">Select Mode</option>
+                  {PAYMENT_MODES.map(mode => (
+                    <option key={mode} value={mode}>{mode}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Amount Paid (₹) <span className="text-debit">*</span></label>
+                <input
+                  type="number"
+                  required
+                  min="0.01"
+                  step="0.01"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-textDark mb-1">Note (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Settled at the mill"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 min-h-[44px]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditModalOpen(false); setEditingPayment(null); }}
+                  className="px-4 py-2 rounded-lg font-medium text-sm text-brownDark border border-brownDark hover:bg-brownDark/5 transition-colors min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg font-medium text-sm bg-gold text-white hover:bg-gold/90 transition-colors disabled:opacity-70 min-h-[44px]"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

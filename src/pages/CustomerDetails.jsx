@@ -30,11 +30,11 @@ export default function CustomerDetails() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deletingEntryId, setDeletingEntryId] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
-  const [deletingEntryId, setDeletingEntryId] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editMode, setEditMode] = useState('');
   const [editNote, setEditNote] = useState('');
@@ -125,7 +125,7 @@ export default function CustomerDetails() {
       showToast(`Entry deleted. Balance updated to ₹${result.newBalance.toLocaleString('en-IN')}.`, "success");
       setDeletingEntryId(null);
       setCustomer(prev => ({ ...prev, balance: result.newBalance }));
-      
+
       if (ledger.length === 1 && currentPage > 1) {
         fetchLedgerPage(currentPage - 1);
       } else {
@@ -302,7 +302,7 @@ export default function CustomerDetails() {
                           </tr>
                         );
                       }
-                      
+
                       return (
                       <tr key={entry.id} className="border-b border-border hover:bg-panel/50 transition-colors group">
                         <td className="py-3 px-6 text-sm text-textMuted">{formatDate(entry.date)}</td>

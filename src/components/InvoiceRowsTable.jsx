@@ -75,7 +75,15 @@ function ItemSearchSelect({ value, items, onChange, disabled }) {
                   onClick={() => { onChange(i.id); setOpen(false); setQuery(''); }}
                   className={`px-3 py-2 text-sm cursor-pointer hover:bg-panel/60 ${i.id === value ? 'bg-gold/10 font-medium text-textDark' : 'text-textDark'}`}
                 >
-                  {i.name} · {i.bagKg}kg
+                  <span className="flex items-center justify-between gap-2">
+                    <span>{i.name} · {i.bagKg}kg</span>
+                    {/* Two records can share a name (a data problem being merged at
+                        source). Showing category and stock lets the operator tell them
+                        apart instead of guessing which one holds the bags. */}
+                    <span className="text-xs text-textMuted shrink-0">
+                      {i.categoryKey} · {Number(i.stock || 0)} bags
+                    </span>
+                  </span>
                 </div>
               ))
             )}

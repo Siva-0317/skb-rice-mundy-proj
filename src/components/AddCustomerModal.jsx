@@ -33,6 +33,13 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess, customerT
         showToast("Mobile number must contain only numbers, spaces, +, or -", "error");
         return;
       }
+      // Format alone is not enough: "12" passed the character check and saved as a
+      // mobile number that can never be dialled, while still polluting customer search.
+      const digitCount = (formData.mobile.match(/[0-9]/g) || []).length;
+      if (digitCount < 7 || digitCount > 15) {
+        showToast("Mobile number must be between 7 and 15 digits", "error");
+        return;
+      }
     }
 
     setIsSubmitting(true);

@@ -77,6 +77,8 @@ export default function Dashboard() {
     todaySalesCount: 0,
     todayBagsMoved: 0,
     totalOutstanding: 0,
+    grossReceivable: 0,
+    advanceHeld: 0,
     overdueAmount: 0,
     overdueCustomers: 0,
     currentStockBags: 0,
@@ -210,7 +212,23 @@ export default function Dashboard() {
           <div>
             <p className="text-sm font-medium text-textMuted mb-1 uppercase tracking-wider text-xs">Total Outstanding</p>
             <h3 className="font-display text-2xl font-bold text-brownDark">{formatCurrency(stats.totalOutstanding)}</h3>
-            <p className="text-xs font-semibold text-debit mt-1">₹{(stats.overdueAmount || 0).toLocaleString('en-IN')} overdue</p>
+            {/* Overdue is a subset of what customers owe, so it is shown against the
+                gross receivable. When we also hold advances, the net headline above is
+                lower than the gross — say so explicitly rather than leaving a reader to
+                wonder how "overdue" can exceed "outstanding". */}
+            <p className="text-xs font-semibold text-debit mt-1">
+              ₹{(stats.overdueAmount || 0).toLocaleString('en-IN')} overdue
+              {(stats.advanceHeld || 0) > 0 && (
+                <span className="text-textMuted font-medium">
+                  {' '}of ₹{(stats.grossReceivable || 0).toLocaleString('en-IN')} due
+                </span>
+              )}
+            </p>
+            {(stats.advanceHeld || 0) > 0 && (
+              <p className="text-xs text-credit mt-0.5">
+                ₹{(stats.advanceHeld || 0).toLocaleString('en-IN')} held as advances
+              </p>
+            )}
           </div>
           <div className="p-3 bg-debit/10 text-debit rounded-xl">
             <IndianRupee className="w-6 h-6" />

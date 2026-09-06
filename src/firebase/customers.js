@@ -209,27 +209,24 @@ export const deleteCustomer = async (customerId) => {
     return chunks;
   };
 
-  // 1. Delete ledger entries in batches
-  const ledgerRef = collection(db, "customers", customerId, "ledger");
-  const ledgerSnap = await getDocs(ledgerRef);
-  
-  const ledgerChunks = chunkArray(ledgerSnap.docs, 500);
-  for (const chunk of ledgerChunks) {
-    const batch = writeBatch(db);
-    chunk.forEach(d => {
-      batch.delete(d.ref);
-      deletedLedgerEntries++;
-    });
-    await batch.commit();
-  }
+  // Order matters here. This cannot be one atomic transaction — a customer may hold
+  // more documents than a single batch allows — so the sequence is chosen to make any
+  // partial failure recoverable rather than silently destructive.
+  //
+  // Stock restoration and sale deletion go FIRST, because they are the step most likely
+  // to fail (it writes to `items`, which is permission-guarded). Deleting the ledger
+  // first, as this originally did, meant a failure at the stock step left the customer
+  // with their sales intact but their entire statement already gone — the balance would
+  // then be unreconstructable. With this order a failure leaves the customer whole and
+  // the operation can simply be retried.
 
-  // 2. Process Sales (reverse stock and delete sale docs)
+  // 1. Process Sales (reverse stock and delete sale docs)
   const salesQuery = query(collection(db, "sales"), where("customerId", "==", customerId));
   const salesSnap = await getDocs(salesQuery);
 
   // Collect total bags to add back per itemId
   const itemRestorations = {};
-  
+
   salesSnap.docs.forEach(saleDoc => {
     const data = saleDoc.data();
     const itemsArray = data.items || data.rows || [];
@@ -255,10 +252,10 @@ export const deleteCustomer = async (customerId) => {
 
   // Batch delete sales and update items
   const saleOps = salesSnap.docs.map(d => ({ type: 'delete', ref: d.ref }));
-  const itemOps = Object.keys(existingItemUpdates).map(itemId => ({ 
-    type: 'update', 
-    ref: doc(db, "items", itemId), 
-    bags: existingItemUpdates[itemId] 
+  const itemOps = Object.keys(existingItemUpdates).map(itemId => ({
+    type: 'update',
+    ref: doc(db, "items", itemId),
+    bags: existingItemUpdates[itemId]
   }));
 
   const allOps = [...itemOps, ...saleOps];
@@ -271,11 +268,25 @@ export const deleteCustomer = async (customerId) => {
         batch.delete(op.ref);
         deletedSales++;
       } else if (op.type === 'update') {
-        batch.update(op.ref, { 
+        batch.update(op.ref, {
           stock: increment(op.bags),
-          updatedAt: serverTimestamp() 
+          updatedAt: serverTimestamp()
         });
       }
+    });
+    await batch.commit();
+  }
+
+  // 2. Delete ledger entries in batches
+  const ledgerRef = collection(db, "customers", customerId, "ledger");
+  const ledgerSnap = await getDocs(ledgerRef);
+
+  const ledgerChunks = chunkArray(ledgerSnap.docs, 500);
+  for (const chunk of ledgerChunks) {
+    const batch = writeBatch(db);
+    chunk.forEach(d => {
+      batch.delete(d.ref);
+      deletedLedgerEntries++;
     });
     await batch.commit();
   }

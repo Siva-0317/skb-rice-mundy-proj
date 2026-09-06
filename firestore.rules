@@ -3,22 +3,51 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Check if user is signed in
+    // ── Helpers ──────────────────────────────────────────────────────────
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper: Fetch user's role and check if they are 'owner'
     function isOwner() {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
     }
 
-    // Global Deny Delete: No one can delete any record, ever.
-    // Corrections should be made via adjusting entries for audit trails.
-    // (We enforce this below by omitting 'delete' from allow rules)
+    // The set of keys an update actually changes.
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
 
-    // Master Data: Only owners can write (create/update), anyone authenticated can read
+    // A stock movement is what happens when trade is recorded: a sale decrements
+    // stock, a purchase increments it, a stock count corrects it. None of these
+    // are master-data edits — they must be available to every signed-in operator,
+    // or the app cannot record a single sale. Only the stock figure (and its
+    // updatedAt stamp) may move this way; name, MRP, bag size, category and the
+    // active flag stay owner-only.
+    function isStockOnlyUpdate() {
+      return changedKeys().hasOnly(['stock', 'updatedAt']) &&
+             request.resource.data.stock is number &&
+             request.resource.data.stock >= 0;
+    }
+
+    // ── Deletion policy ──────────────────────────────────────────────────
+    // The operator can delete a customer, an item, a supplier, a sale or a
+    // purchase at any time — the app is the book of a working mundy, and the
+    // people keeping it need to be able to take a wrong entry back out.
+    //
+    // Every deletion path in the client reverses what the record did before
+    // removing it: deleting a sale restores its bags and reverses the customer
+    // balance, deleting a purchase reverses stock and the supplier balance,
+    // deleting a customer restores stock from all of their bills. The guards
+    // that remain are referential, not moral: deleteItem refuses an item that
+    // appears in a bill, and deleteSupplier refuses a supplier with purchase
+    // history, because those records would otherwise point at nothing.
+    //
+    // Counters and user role documents stay undeletable: nothing in the app
+    // needs to remove them, and losing a counter would restart bill numbering.
+
+    // ── Master data ──────────────────────────────────────────────────────
     match /categories/{categoryId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isOwner();
@@ -26,19 +55,33 @@ service cloud.firestore {
 
     match /items/{itemId} {
       allow read: if isAuthenticated();
-      allow create, update: if isOwner();
-      allow delete: if false;
+      allow create: if isOwner();
+      // Owners may edit anything; everyone else may only move stock.
+      allow update: if isOwner() || (isAuthenticated() && isStockOnlyUpdate());
+      // Guarded in the client: deleteItem refuses any item that appears in a
+      // sale or a purchase.
+      allow delete: if isOwner();
     }
 
-    // Users Collection: Users can read their own profile, only owners can edit
+    // Audit trail for manual stock corrections. Append-only: entries may be
+    // created by any operator and never altered or removed afterwards.
+    match /inventory_adjustments/{adjustmentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // ── Users ────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if request.auth.uid == userId;
+      allow read: if isAuthenticated() && request.auth.uid == userId;
       allow create, update: if isOwner();
       allow delete: if false;
     }
 
-    // Transactions & Profiles: Any authenticated user can create/update, nobody deletes
+    // ── Transactions and profiles ────────────────────────────────────────
     match /customers/{customerId} {
+      // Deleting a customer cascades: their sales are removed, the bags on those
+      // bills go back into stock, and their ledger is cleared.
       allow read, create, update, delete: if isAuthenticated();
 
       match /ledger/{entryId} {
@@ -48,7 +91,8 @@ service cloud.firestore {
 
     match /suppliers/{supplierId} {
       allow read, create, update: if isAuthenticated();
-      allow delete: if false;
+      // Guarded in the client: a supplier with purchase history cannot be removed.
+      allow delete: if isOwner();
 
       match /ledger/{entryId} {
         allow read, create, update, delete: if isAuthenticated();
@@ -60,11 +104,10 @@ service cloud.firestore {
     }
 
     match /purchases/{purchaseId} {
-      allow read, create, update: if isAuthenticated();
-      allow delete: if false;
+      allow read, create, update, delete: if isAuthenticated();
     }
 
-    // Counters: Any authenticated user can update auto-increment counters
+    // ── Counters ─────────────────────────────────────────────────────────
     match /counters/{counterId} {
       allow read, create, update: if isAuthenticated();
       allow delete: if false;

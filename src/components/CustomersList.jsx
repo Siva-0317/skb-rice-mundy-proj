@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit2, ChevronRight, Trash2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { getCustomers } from '../firebase/customers';
 import { getCustomerStatus } from '../utils/customerStatus';
 import { useToast } from '../context/ToastContext';
@@ -58,10 +58,10 @@ export default function CustomersList() {
     setCustomers(prev => prev.filter(c => c.id !== deletedId));
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    c.mobile.includes(searchQuery)
-  );
+  const filteredCustomers = customers.filter(c => {
+    const q = searchQuery.toLowerCase();
+    return (c.name || '').toLowerCase().includes(q) || (c.mobile || '').includes(searchQuery);
+  });
 
   const formatDate = (timestamp) => formatDateIST(timestamp);
 

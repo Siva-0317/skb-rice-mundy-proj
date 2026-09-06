@@ -1,4 +1,4 @@
-import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "./config";
 import { sortByDateThenCreatedAt } from "../utils/dateIST";
 
@@ -8,6 +8,24 @@ export const getNextBillNo = async () => {
   const d = await getDoc(counterRef);
   const nextSaleBill = d.exists() ? (d.data().nextSaleBill || 1) : 1;
   return 'SKB-2026-' + String(nextSaleBill).padStart(4, '0');
+};
+
+// Bill lookup for the global search box. Uses a prefix range on billNo so it stays a
+// single indexed query rather than pulling the whole sales collection into the shell.
+// Bill numbers are stored upper-case ("SKB-2026-0021"), so the query is upper-cased to
+// keep the search case-insensitive from the user's point of view.
+export const searchSalesByBillNo = async (term, max = 5) => {
+  const q0 = String(term || '').trim().toUpperCase();
+  if (!q0) return [];
+  const q = query(
+    collection(db, "sales"),
+    orderBy("billNo"),
+    where("billNo", ">=", q0),
+    where("billNo", "<=", q0 + '\uf8ff'),
+    limit(max)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
 export const getRecentSales = async () => {
@@ -549,8 +567,9 @@ export const deleteSale = async (saleId) => {
     transaction.delete(saleRef);
   });
 
-  // After transaction, delete ledger entries
-  const { writeBatch } = await import("firebase/firestore");
+  // After transaction, delete ledger entries. writeBatch is imported statically
+  // at the top of this module — the dynamic import that used to sit here defeated
+  // bundling for no benefit.
   const ledgerQ = query(collection(db, "customers", sale.customerId, "ledger"), where("refId", "==", saleId));
   const ledgerSnap = await getDocs(ledgerQ);
   if (!ledgerSnap.empty) {

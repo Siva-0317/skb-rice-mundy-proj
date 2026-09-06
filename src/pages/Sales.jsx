@@ -25,15 +25,15 @@ export default function Sales() {
   // UI State
   const [loading, setLoading] = useState(true);
   const [salesLoading, setSalesLoading] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [recentSalesOpen, setRecentSalesOpen] = useState(true);
   const [editingSaleId, setEditingSaleId] = useState(null);
   const [editingBillNo, setEditingBillNo] = useState('');
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [saleToDelete, setSaleToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const { showToast } = useToast();
 
   const [selectedMonthDate, setSelectedMonthDate] = useState(() => {
@@ -307,18 +307,27 @@ export default function Sales() {
     try {
       const selectedCustomer = customers.find(c => c.id === customerId);
       
+      // Number('') is 0 but Number(undefined) is NaN, and items carry only `mrp` these
+      // days — the legacy `rate` field is usually absent, so an unguarded Number(r.rate)
+      // wrote NaN into every saved line. NaN is not valid JSON, survives silently in the
+      // document, and poisons any later sum or average over the field.
+      const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+
       const payloadRows = calculatedRows
         .filter(r => r.itemId && Number(r.bags) > 0)
         .map(r => ({
           itemId: r.itemId,
           item: r.item?.name || r.item,
           cat: r.categoryKey,
-          bags: Number(r.bags),
-          bagKg: Number(r.bagKg),
-          rate: Number(r.rate),
-          mrp: Number(r.mrp !== undefined && r.mrp !== '' ? r.mrp : r.rate),
+          bags: toNum(r.bags),
+          bagKg: toNum(r.bagKg),
+          rate: toNum(r.rate),
+          mrp: toNum(r.mrp !== undefined && r.mrp !== '' ? r.mrp : r.rate),
           priceField: r.priceField || 'mrp',
-          amount: Number(r.amount)
+          amount: toNum(r.amount)
         }));
 
       if (editingSaleId) {

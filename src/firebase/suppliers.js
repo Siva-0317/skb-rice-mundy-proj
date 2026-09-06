@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, where, limit, serverTimestamp, runTransaction, writeBatch, deleteDoc } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
 
@@ -116,3 +116,31 @@ export const recordSupplierPayment = async (supplierId, paymentData) => {
   });
 };
 
+export const deleteSupplier = async (supplierId) => {
+  const supplierRef = doc(db, "suppliers", supplierId);
+  const supplierSnap = await getDoc(supplierRef);
+  if (!supplierSnap.exists()) throw new Error("Supplier not found");
+
+  const supplierName = supplierSnap.data().name || 'Unknown Supplier';
+
+  // A supplier that appears on a purchase is part of the audit trail — removing
+  // them would leave those bills pointing at nothing. Mirrors deleteItem.
+  const purchasesQ = query(collection(db, "purchases"), where("supplierId", "==", supplierId), limit(1));
+  const purchasesSnap = await getDocs(purchasesQ);
+  if (!purchasesSnap.empty) {
+    throw new Error(`Cannot delete '${supplierName}' — it has existing purchase records.`);
+  }
+
+  // Clear the (payments-only) ledger, then the supplier document itself.
+  const ledgerSnap = await getDocs(collection(db, "suppliers", supplierId, "ledger"));
+  if (!ledgerSnap.empty) {
+    for (let i = 0; i < ledgerSnap.docs.length; i += 500) {
+      const batch = writeBatch(db);
+      ledgerSnap.docs.slice(i, i + 500).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
+
+  await deleteDoc(supplierRef);
+  return { deleted: true, supplierId, supplierName };
+};

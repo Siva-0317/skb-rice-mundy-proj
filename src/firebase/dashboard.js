@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from "firebase/firestore";
 import { db } from "./config";
-import { getUniqueActiveItems } from "./items";
+import { getActiveItems } from "./items";
 import { getCustomerStatus } from "../utils/customerStatus";
 import { getISTTodayAsUtcMidnight, toMillis, toDateObj } from "../utils/dateIST";
 import { LOW_STOCK_THRESHOLD } from "../utils/constants";
@@ -80,24 +80,34 @@ export const getTodayStats = async () => {
   const todaySalesCount = salesSnap.docs.length;
 
   // Overdue Customers & Total Outstanding
+  // Three distinct figures, kept separate so they can never contradict each other:
+  //  - grossReceivable: what customers owe us (positive balances only)
+  //  - advanceHeld:     what we hold on their behalf (negative balances, as a positive)
+  //  - totalOutstanding: the net of the two — this is the figure that ties out to the
+  //                      Ledger's running balance, so the two screens always agree.
+  // Overdue is a subset of grossReceivable, never of the net, which is why it is
+  // reported alongside grossReceivable rather than beneath the net total.
   const custQ = query(collection(db, "customers"));
   const custSnap = await getDocs(custQ);
-  let totalOutstanding = 0;
+  let grossReceivable = 0;
+  let advanceHeld = 0;
   let overdueAmount = 0;
   let overdueCustomers = 0;
   custSnap.docs.forEach(d => {
     const data = d.data();
     const bal = Number(data.balance) || 0;
-    totalOutstanding += bal;
+    if (bal > 0) grossReceivable += bal;
+    else advanceHeld += -bal;
     const status = getCustomerStatus({ id: d.id, ...data });
-    if (status === 'overdue') {
+    if (status === 'overdue' && bal > 0) {
       overdueCustomers += 1;
       overdueAmount += bal;
     }
   });
+  const totalOutstanding = grossReceivable - advanceHeld;
 
   // Low Stock Items & Current Stock
-  const activeItems = await getUniqueActiveItems();
+  const activeItems = await getActiveItems();
 
   let currentStockBags = 0;
   activeItems.forEach(i => {
@@ -113,6 +123,8 @@ export const getTodayStats = async () => {
     todaySalesCount,
     todayBagsMoved,
     totalOutstanding,
+    grossReceivable,
+    advanceHeld,
     overdueAmount,
     overdueCustomers,
     currentStockBags,
@@ -139,10 +151,9 @@ export const getDashboardRecentSales = async (limitCount = 7) => {
 };
 
 export const getStockByVariety = async (limitCount = 8) => {
-  const itemsSnap = await getDocs(collection(db, "items"));
-  const activeItems = itemsSnap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(i => i.active !== false);
+  // Same source as every other stock figure, so the panel can never disagree with
+  // the Current Stock tile above it.
+  const activeItems = await getActiveItems();
 
   return activeItems
     .map(i => ({

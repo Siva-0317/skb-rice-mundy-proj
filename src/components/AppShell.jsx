@@ -21,6 +21,7 @@ import { signOutUser } from '../firebase/auth';
 import { AuthContext } from '../context/AuthContext';
 import { getCustomers } from '../firebase/customers';
 import { getItems } from '../firebase/items';
+import { searchSalesByBillNo } from '../firebase/sales';
 import { getTodayStats } from '../firebase/dashboard';
 
 const NAV_LINKS = [
@@ -43,6 +44,7 @@ export default function AppShell({ children, title }) {
   // Search & Bell State
   const [customers, setCustomers] = useState([]);
   const [items, setItems] = useState([]);
+  const [billMatches, setBillMatches] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -77,6 +79,21 @@ export default function AppShell({ children, title }) {
     return () => clearTimeout(handler);
   }, [searchQuery]);
 
+  // Bills are looked up on demand rather than held in memory: there can be tens of
+  // thousands of them, and a prefix query on billNo is a single indexed read.
+  useEffect(() => {
+    let cancelled = false;
+    const term = debouncedQuery.trim();
+    if (!term) {
+      setBillMatches([]);
+      return undefined;
+    }
+    searchSalesByBillNo(term)
+      .then(res => { if (!cancelled) setBillMatches(res || []); })
+      .catch(() => { if (!cancelled) setBillMatches([]); });
+    return () => { cancelled = true; };
+  }, [debouncedQuery]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -101,25 +118,28 @@ export default function AppShell({ children, title }) {
   }, []);
 
   const searchResults = useMemo(() => {
-    if (!debouncedQuery.trim()) return { customers: [], items: [], total: 0 };
+    if (!debouncedQuery.trim()) return { customers: [], items: [], bills: [], total: 0 };
     const q = debouncedQuery.toLowerCase();
-    
-    const matchedCust = customers.filter(c => 
-      (c.name && c.name.toLowerCase().includes(q)) || 
+
+    const matchedCust = customers.filter(c =>
+      (c.name && c.name.toLowerCase().includes(q)) ||
       (c.mobile && String(c.mobile).includes(q))
     ).slice(0, 6);
 
     const rem = 6 - matchedCust.length;
-    const matchedItems = rem > 0 ? items.filter(i => 
+    const matchedItems = rem > 0 ? items.filter(i =>
       i.name && i.name.toLowerCase().includes(q)
     ).slice(0, rem) : [];
+
+    const matchedBills = (billMatches || []).slice(0, 5);
 
     return {
       customers: matchedCust,
       items: matchedItems,
-      total: matchedCust.length + matchedItems.length
+      bills: matchedBills,
+      total: matchedCust.length + matchedItems.length + matchedBills.length
     };
-  }, [debouncedQuery, customers, items]);
+  }, [debouncedQuery, customers, items, billMatches]);
 
   const handleSelectCustomer = (id) => {
     setIsSearchOpen(false);
@@ -131,6 +151,13 @@ export default function AppShell({ children, title }) {
     setIsSearchOpen(false);
     setSearchQuery('');
     navigate('/masters', { state: { highlightItemId: id } });
+  };
+
+  const handleSelectBill = (sale) => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    if (sale?.customerId) navigate(`/customers/${sale.customerId}`);
+    else navigate('/sales');
   };
 
   const handleLogout = async () => {
@@ -311,7 +338,27 @@ export default function AppShell({ children, title }) {
                               className="px-4 py-2.5 hover:bg-panel/50 cursor-pointer flex items-center justify-between transition-colors"
                             >
                               <span className="text-sm font-medium text-textDark">{i.name}</span>
-                              <span className="text-xs text-textMuted">₹{i.rate} · {i.categoryKey}</span>
+                              <span className="text-xs text-textMuted">₹{i.mrp ?? i.rate ?? 0} · {i.categoryKey}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchResults.bills.length > 0 && (
+                        <div>
+                          <div className="px-4 py-1.5 text-[10px] font-bold tracking-wider uppercase text-textMuted bg-panel border-t border-border mt-1">
+                            Bills
+                          </div>
+                          {searchResults.bills.map(b => (
+                            <div
+                              key={b.id}
+                              onClick={() => handleSelectBill(b)}
+                              className="px-4 py-2.5 hover:bg-panel/50 cursor-pointer flex items-center justify-between transition-colors"
+                            >
+                              <span className="text-sm font-medium text-textDark">{b.billNo}</span>
+                              <span className="text-xs text-textMuted">
+                                {b.customerName || '—'} · ₹{Number(b.totalAmount || 0).toLocaleString('en-IN')}
+                              </span>
                             </div>
                           ))}
                         </div>
