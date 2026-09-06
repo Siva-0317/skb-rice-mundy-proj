@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getCategories, getActiveItems, adjustStock } from '../firebase/items';
+import { groupItemsByCategory } from '../utils/itemGrouping';
 import { Pencil, ChevronDown, ChevronRight, X, AlertTriangle, Package, Boxes, AlertCircle, Plus } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { formatDateIST } from '../utils/dateIST';
@@ -33,9 +34,12 @@ export default function Inventory() {
       setCategories(cats);
       setItems(activeItems);
       
-      // Expand all categories by default
+      // Seed from the items too, not only the category list: an item whose
+      // category was deleted forms its own group, and an unseeded group would
+      // render collapsed — leaving it just as hidden as before.
       const exp = {};
       cats.forEach(c => exp[c.key] = true);
+      activeItems.forEach(i => { if (i.categoryKey) exp[i.categoryKey] = true; });
       setExpandedCats(exp);
     } catch (error) {
       console.error("Error fetching inventory data:", error);
@@ -86,30 +90,12 @@ export default function Inventory() {
     }
   };
 
-  // Group items with unique keys only
-  const itemsByCategory = useMemo(() => {
-    const grouped = {};
-    const seenCatKeys = new Set();
-    categories.forEach(c => {
-      if (!seenCatKeys.has(c.key)) {
-        seenCatKeys.add(c.key);
-        grouped[c.key] = [];
-      }
-    });
-    
-    const seenItemIds = new Set();
-    items.forEach(item => {
-      if (seenItemIds.has(item.id)) return;
-      seenItemIds.add(item.id);
-      
-      if (grouped[item.categoryKey]) {
-        grouped[item.categoryKey].push(item);
-      } else {
-        grouped[item.categoryKey] = [item];
-      }
-    });
-    return grouped;
-  }, [items, categories]);
+  // Grouping — including how an item whose category was deleted is surfaced —
+  // lives in one shared place so the two screens cannot drift apart again.
+  const { grouped: itemsByCategory, displayCategories } = useMemo(
+    () => groupItemsByCategory(items, categories),
+    [items, categories]
+  );
 
   // Summary Stats
   const totalItems = items.length;
@@ -191,7 +177,7 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => {
+              {displayCategories.map((category) => {
                 const catItems = itemsByCategory[category.key] || [];
                 const isExpanded = expandedCats[category.key];
 
@@ -208,6 +194,11 @@ export default function Inventory() {
                           {isExpanded ? <ChevronDown className="w-4 h-4 text-textMuted" /> : <ChevronRight className="w-4 h-4 text-textMuted" />}
                           <span className="font-semibold text-textDark">{category.label}</span>
                           <span className="text-sm text-textMuted ml-2">({category.labelTamil})</span>
+                          {category.isOrphan && (
+                            <span className="text-[10px] uppercase tracking-wide bg-debit/10 text-debit border border-debit/20 px-1.5 py-0.5 rounded" title={`These items reference a category "${category.key}" that no longer exists. Edit each item to move it to a real category.`}>
+                              missing category
+                            </span>
+                          )}
                           <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} items</span>
                         </div>
                       </td>

@@ -46,6 +46,12 @@ export default function RecordPurchasePaymentModal({ isOpen, onClose, onSuccess,
       showToast("Amount must be greater than 0", "error");
       return;
     }
+    // A record dated in the future corrupts period reporting and ageing. Sales and
+    // customer payments already refused one; these three forms did not.
+    if (paymentDate > getISTTodayDateString()) {
+      showToast("Payment date cannot be in the future", "error");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -108,6 +114,7 @@ export default function RecordPurchasePaymentModal({ isOpen, onClose, onSuccess,
             <input
               type="date"
               required
+              max={getISTTodayDateString()}
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-gold/50"

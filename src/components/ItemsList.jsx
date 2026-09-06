@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { canEditMasters } from '../utils/permissions';
 import { getCategories, getItems, setItemActive, seedIfEmpty } from '../firebase/items';
+import { groupItemsByCategory } from '../utils/itemGrouping';
 import { Pencil, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import DeleteItemModal from './DeleteItemModal';
@@ -28,8 +29,12 @@ export default function ItemsList() {
       setCategories(cats);
       setItems(itms);
       
+      // Seed from the items too, not only the category list: an item whose
+      // category was deleted forms its own group, and an unseeded group would
+      // render collapsed — leaving it just as hidden as before.
       const exp = {};
       cats.forEach(c => exp[c.key] = true);
+      itms.forEach(i => { if (i.categoryKey) exp[i.categoryKey] = true; });
       setExpandedCats(exp);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -86,18 +91,12 @@ export default function ItemsList() {
     fetchData();
   };
 
-  const itemsByCategory = useMemo(() => {
-    const grouped = {};
-    categories.forEach(c => grouped[c.key] = []);
-    items.forEach(item => {
-      if (grouped[item.categoryKey]) {
-        grouped[item.categoryKey].push(item);
-      } else {
-        grouped[item.categoryKey] = [item];
-      }
-    });
-    return grouped;
-  }, [items, categories]);
+  // Grouping — including how an item whose category was deleted is surfaced —
+  // lives in one shared place so the two screens cannot drift apart again.
+  const { grouped: itemsByCategory, displayCategories } = useMemo(
+    () => groupItemsByCategory(items, categories),
+    [items, categories]
+  );
 
   if (loading && items.length === 0) {
     return <div className="flex items-center justify-center h-full text-textMuted py-8">Loading items...</div>;
@@ -136,7 +135,7 @@ export default function ItemsList() {
             </tr>
           </thead>
           <tbody>
-            {categories.map((category) => {
+            {displayCategories.map((category) => {
               const catItems = itemsByCategory[category.key] || [];
               const isExpanded = expandedCats[category.key];
 
@@ -151,6 +150,11 @@ export default function ItemsList() {
                         {isExpanded ? <ChevronDown className="w-4 h-4 text-textMuted" /> : <ChevronRight className="w-4 h-4 text-textMuted" />}
                         <span className="font-semibold text-textDark">{category.label}</span>
                         <span className="text-sm text-textMuted ml-2">({category.labelTamil})</span>
+                        {category.isOrphan && (
+                          <span className="text-[10px] uppercase tracking-wide bg-debit/10 text-debit border border-debit/20 px-1.5 py-0.5 rounded" title={`These items reference a category "${category.key}" that no longer exists. Edit each item to move it to a real category.`}>
+                            missing category
+                          </span>
+                        )}
                         <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} items</span>
                       </div>
                     </td>

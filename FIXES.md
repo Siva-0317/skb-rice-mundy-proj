@@ -239,3 +239,79 @@ Deciding these is the client's call, not a bug to fix quietly.
 
 ### Verification after revert
 53 tests passing, clean `vite build`, oxlint 42 warnings / 0 errors.
+
+---
+
+## Round 4 — the two defects round 3 found
+
+### NEW-07 (High) — customer statement went stale after any deletion
+Every ledger row carried a `balanceAfter` written at insert time, and the
+customer statement rendered that stored value. Nothing rewrote it when a row
+was removed, so deleting a bill left the surviving rows showing a balance from
+before the deletion. Observed live: a customer whose real balance was
+-Rs 1,000 had their only remaining ledger row printing -Rs 4,250.
+
+The Business Ledger never had the problem, because `getGlobalLedger` already
+accumulated its own running total on read.
+
+Fix: `src/utils/ledgerBalance.js` derives the column instead of storing it, and
+both `getCustomerLedgerPaginated` and `getSupplierLedgerPaginated` now use it.
+The ordering is made total — date, createdAt, seq, then document id — so two
+reads of the same data cannot swap rows and make the balance appear to jump.
+
+Two things worth knowing about this shape:
+- It **repairs statements a past deletion already corrupted**, with no data
+  migration. The stale stored field is simply ignored from now on.
+- No future deletion path has to remember to recompute anything, so it cannot
+  drift back.
+
+`closingBalance()` is exported alongside it for checking a statement against the
+balance held on the customer or supplier document.
+
+### NEW-06 (High) — items whose category was deleted became unmanageable
+`Broken Rice` carried `categoryKey: 'boiled-rice'`; the real category's key is
+`boiled`. Item Masters and Inventory each rendered `categories.map(...)`, so the
+bucket built for an unknown key was never iterated, while the totals still
+counted it. 400 bags worth Rs 3,60,000 appeared in Total Bags, on the Dashboard
+and in the Stock Summary report, but in no editable table — so they could not be
+edited, adjusted, deactivated or deleted from anywhere in the app, while staying
+fully sellable.
+
+The bug existed twice because the grouping existed twice. Both copies are now
+replaced by `src/utils/itemGrouping.js`, which returns the groups **and** the
+category list to render, appending one "Uncategorised" entry per orphaned key,
+flagged `isOrphan` and badged "missing category" in the UI with the missing key
+named in its tooltip.
+
+Two smaller things fixed while there:
+- `expandedCats` is now seeded from the items as well as the categories. An
+  unseeded group renders collapsed, which would have left the orphan just as
+  hidden as before.
+- The shared version keeps Inventory's duplicate-key and duplicate-id guards,
+  which Item Masters had been missing.
+
+Still needs doing in the data: re-point `Broken Rice` to `boiled` in the Firebase
+Console. The code change makes it visible and editable; it does not decide which
+category it belongs in.
+
+### BUG-10 (Medium) — future-dated transactions
+Round 3 recorded this as fully open. That was too harsh, and the correction is
+worth recording: `Sales.jsx` and `RecordPaymentModal` already refused a future
+date at save. What was missing:
+
+- No `max` on any date input, so nothing stopped the date being picked. The only
+  feedback was a toast after pressing Save. All five transaction date inputs now
+  carry `max={getISTTodayDateString()}`.
+- **Three forms had no guard at all**: `NewPurchaseModal`,
+  `RecordSupplierPaymentModal` and `RecordPurchasePaymentModal` would have saved
+  a future-dated record. All three now refuse one, matching the two that did.
+
+Back-dating stays available, which the business needs.
+
+### Tests
+`ledgerBalance.test.js` (9) reproduces the exact round-3 deletion scenario and
+pins that a stale stored value is ignored. `itemGrouping.test.js` (10) asserts
+the rendered rows account for every bag the header counts — the equality that
+was 6,381 vs 5,981 before the fix.
+
+71 tests passing (was 53), clean `vite build`, oxlint 42 warnings / 0 errors.

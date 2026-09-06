@@ -503,6 +503,7 @@ export default function Sales() {
                 <label className="block text-sm font-medium text-textDark mb-1">Date</label>
                 <input
                   type="date"
+                  max={getISTTodayDateString()}
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   placeholder="DD-MM-YYYY"

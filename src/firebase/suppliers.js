@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, where, limit, serverTimestamp, runTransaction, writeBatch, deleteDoc } from "firebase/firestore";
 import { db } from "./config";
-import { toMillis } from "../utils/dateIST";
+import { withRunningBalance } from "../utils/ledgerBalance";
 
 export const getSuppliers = async () => {
   const q = query(collection(db, "suppliers"), orderBy("name", "asc"));
@@ -27,13 +27,10 @@ export const getSupplierLedger = async (id) => {
 export const getSupplierLedgerPaginated = async (id, { pageSize = 20, page = 1 } = {}) => {
   const ledgerColRef = collection(db, "suppliers", id, "ledger");
   const snap = await getDocs(query(ledgerColRef));
-  const entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  entries.sort((a, b) => {
-    const dateDiff = toMillis(b.date) - toMillis(a.date);
-    if (dateDiff !== 0) return dateDiff;
-    return toMillis(b.createdAt) - toMillis(a.createdAt);
-  });
+  // Derived, not stored — same reasoning as the customer statement.
+  const entries = withRunningBalance(
+    snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  );
 
   const totalCount = entries.length;
   const start = (page - 1) * pageSize;

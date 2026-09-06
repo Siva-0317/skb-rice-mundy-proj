@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, serverTimestamp, runTransaction, where, writeBatch, deleteDoc, increment } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
+import { withRunningBalance } from "../utils/ledgerBalance";
 
 export const getCustomers = async () => {
   const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
@@ -31,15 +32,12 @@ export const getCustomerLedger = async (id) => {
 export const getCustomerLedgerPaginated = async (id, { pageSize = 20, page = 1 } = {}) => {
   const ledgerColRef = collection(db, "customers", id, "ledger");
   const snap = await getDocs(query(ledgerColRef));
-  const entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  entries.sort((a, b) => {
-    const dateDiff = toMillis(b.date) - toMillis(a.date);
-    if (dateDiff !== 0) return dateDiff;
-    const createdDiff = toMillis(b.createdAt) - toMillis(a.createdAt);
-    if (createdDiff !== 0) return createdDiff;
-    return (Number(b.seq) || 0) - (Number(a.seq) || 0);
-  });
+  // The running balance is derived here rather than read from the stored
+  // balanceAfter field, which goes stale the moment any row is deleted.
+  // See src/utils/ledgerBalance.js.
+  const entries = withRunningBalance(
+    snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  );
 
   const totalCount = entries.length;
   const start = (page - 1) * pageSize;
