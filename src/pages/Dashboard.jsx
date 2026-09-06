@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { IndianRupee, Users, AlertTriangle, TrendingUp, Package } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -7,69 +7,10 @@ import { useToast } from '../context/ToastContext';
 import { formatRelativeDateIST } from '../utils/dateIST';
 import { LOW_STOCK_THRESHOLD } from '../utils/constants';
 import NewPurchaseModal from '../components/NewPurchaseModal';
-import { AuthContext } from '../context/AuthContext';
-import { collection, getDocs, doc, writeBatch, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
-  const { user } = useContext(AuthContext);
 
-  // Temporary function for BUG-16 Migration
-  const runMigration = async () => {
-    try {
-      console.log("Starting migration...");
-      alert("Starting cleanup...");
-      const categoriesSnap = await getDocs(collection(db, "categories"));
-      const categories = categoriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-      const testKeys = ['test', 'test1', 'Sample Rice', 'Credit'];
-      const toDelete = categories.filter(c => testKeys.includes(c.key) || testKeys.includes(c.label));
-
-      for (const c of toDelete) {
-        await deleteDoc(doc(db, "categories", c.id));
-      }
-
-      const boiledRiceCats = categories.filter(c => c.key === 'Boiled Rice' || c.label === 'Boiled Rice');
-      if (boiledRiceCats.length > 1) {
-        const itemsSnap = await getDocs(collection(db, "items"));
-        let retainId = boiledRiceCats[0].id;
-        let deleteId = boiledRiceCats[1].id;
-        
-        let retainCount = 0;
-        let deleteCount = 0;
-        
-        itemsSnap.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.categoryKey === boiledRiceCats[0].key || data.categoryId === boiledRiceCats[0].id) retainCount++;
-          if (data.categoryKey === boiledRiceCats[1].key || data.categoryId === boiledRiceCats[1].id) deleteCount++;
-        });
-
-        if (deleteCount > retainCount) {
-          retainId = boiledRiceCats[1].id;
-          deleteId = boiledRiceCats[0].id;
-        }
-
-        const ops = [];
-        itemsSnap.docs.forEach(docSnap => {
-          if (docSnap.data().categoryId === deleteId) {
-            ops.push({ ref: docSnap.ref, categoryId: retainId });
-          }
-        });
-
-        // Simple batching (assuming < 500)
-        const batch = writeBatch(db);
-        ops.forEach(op => batch.update(op.ref, { categoryId: op.categoryId }));
-        await batch.commit();
-
-        await deleteDoc(doc(db, "categories", deleteId));
-      }
-      alert("Migration complete! You can reload the page.");
-    } catch (e) {
-      console.error(e);
-      alert("Error: " + e.message);
-    }
-  };
   const [isNewPurchaseOpen, setIsNewPurchaseOpen] = useState(false);
   const [weekSales, setWeekSales] = useState([]);
   const [stats, setStats] = useState({
@@ -199,12 +140,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {user?.role === 'owner' && (
-        <button onClick={runMigration} className="flex items-center gap-2 bg-red-500/10 text-red-500 px-4 py-2 rounded-lg hover:bg-red-500/20 transition-colors font-medium text-sm w-max">
-          Run DB Cleanup (BUG-16)
-        </button>
-      )}
-      
       {/* ROW 1: 3 STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         {/* TOTAL OUTSTANDING */}
