@@ -1,6 +1,59 @@
-import { doc, collection, getDocs, query, orderBy, limit, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, collection, getDocs, query, orderBy, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
+
+/**
+ * Read a person's whole ledger, newest first.
+ *
+ * This runs BEFORE the transaction opens, deliberately. A collection query
+ * issued from inside a runTransaction callback can block on the same stream the
+ * transaction is holding: the save then hangs on "Saving..." forever, with no
+ * error, no toast and nothing written. That happened on the live site the first
+ * time this path was exercised after the balance recompute was added.
+ *
+ * The cost is that the rows are read a moment before the transaction commits,
+ * so a concurrent write could in principle land in between. That is an
+ * acceptable trade here — one operator, a handful of rows per person — and the
+ * transaction still re-reads and re-validates the entry itself before writing.
+ */
+const readLedgerRows = async (collectionName, personId) => {
+  const snap = await getDocs(
+    query(collection(db, collectionName, personId, "ledger"), orderBy("date", "desc"))
+  );
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/**
+ * The balance implied by a set of ledger rows.
+ *
+ * Recomputed rather than nudged by a delta. A delta is only correct while the
+ * stored figure is, and editLedgerEntry used to corrupt that figure — so a
+ * balance an earlier bad edit skewed would have stayed skewed forever, every
+ * later delta landing on top of the wrong number. Deriving it means one bad
+ * write cannot outlive the next edit, and a record damaged by the old code
+ * repairs itself the first time anyone touches it. Same reasoning as the
+ * statement's running balance in utils/ledgerBalance.js.
+ */
+const balanceFromRows = (rows) =>
+  rows.reduce((sum, r) => sum + (Number(r.debit) || 0) - (Number(r.credit) || 0), 0);
+
+/**
+ * Only the most recent payment may be edited, because every balance after it is
+ * derived from it. Firestore's orderBy("date") alone doesn't separate same-day
+ * entries, so the "latest" doc it returns can be an arbitrary same-day sibling.
+ * Re-sort with the same (date, createdAt, seq) tiebreak used for display.
+ */
+const isMostRecent = (rows, entryId) => {
+  if (rows.length === 0) return true;
+  const sorted = [...rows].sort((a, b) => {
+    const dateDiff = toMillis(b.date) - toMillis(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    const createdDiff = toMillis(b.createdAt) - toMillis(a.createdAt);
+    if (createdDiff !== 0) return createdDiff;
+    return (Number(b.seq) || 0) - (Number(a.seq) || 0);
+  });
+  return sorted[0].id === entryId;
+};
 
 export const editLedgerEntry = async (personType, personId, entryId, { amount, mode, note }) => {
   const numAmount = Number(amount);
@@ -13,39 +66,30 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
 
   const entryRef = doc(db, collectionName, personId, "ledger", entryId);
   const personRef = doc(db, collectionName, personId);
-  const ledgerColRef = collection(db, collectionName, personId, "ledger");
-  // Firestore's orderBy("date") alone doesn't distinguish same-day entries, so the
-  // "most recent" doc it returns can be an arbitrary same-day sibling rather than the
-  // true latest one. Over-fetch a buffer past same-day ties and re-sort client-side
-  // with the same (date, createdAt, seq) tiebreak used for ledger display everywhere else.
-  const recentQuery = query(ledgerColRef, orderBy("date", "desc"), limit(10));
-  // The balance is recomputed from every row rather than nudged by a delta — see
-  // reconcileBalance below for why. Ledgers here are a handful of rows per person.
-  const allEntriesQuery = query(ledgerColRef, orderBy("date", "desc"));
+
+  const rows = await readLedgerRows(collectionName, personId);
+  if (!isMostRecent(rows, entryId)) {
+    throw new Error("Only the most recent payment can be edited");
+  }
+
+  // A payment is stored as a CREDIT for both customers and suppliers —
+  // recordPayment and recordSupplierPayment both write { debit: 0, credit: amount }.
+  // This function used to branch on isSupplier and read the old amount off
+  // `debit`, which was always 0, then write the new amount to `debit` too. The
+  // row ended up claiming both sides and the balance was reduced by the whole
+  // new amount a second time.
+  const edited = { id: entryId, debit: 0, credit: numAmount };
+  const newBalance = balanceFromRows(rows.map(r => (r.id === entryId ? edited : r)));
+
+  const desc = note?.trim() ? note.trim() : (isSupplier ? `Payment made (${mode})` : `Payment received (${mode})`);
 
   await runTransaction(db, async (transaction) => {
     const entrySnap = await transaction.get(entryRef);
     if (!entrySnap.exists()) {
       throw new Error("Ledger entry not found");
     }
-    const entryData = entrySnap.data();
-    if (entryData.type !== 'payment') {
+    if (entrySnap.data().type !== 'payment') {
       throw new Error("Only payment entries can be edited");
-    }
-
-    const recentSnap = await getDocs(recentQuery);
-    if (!recentSnap.empty) {
-      const recentDocs = recentSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      recentDocs.sort((a, b) => {
-        const dateDiff = toMillis(b.date) - toMillis(a.date);
-        if (dateDiff !== 0) return dateDiff;
-        const createdDiff = toMillis(b.createdAt) - toMillis(a.createdAt);
-        if (createdDiff !== 0) return createdDiff;
-        return (Number(b.seq) || 0) - (Number(a.seq) || 0);
-      });
-      if (recentDocs[0].id !== entryId) {
-        throw new Error("Only the most recent payment can be edited");
-      }
     }
 
     const personSnap = await transaction.get(personRef);
@@ -53,44 +97,16 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
       throw new Error("Person not found");
     }
 
-    // A payment is stored as a CREDIT for both customers and suppliers —
-    // recordPayment and recordSupplierPayment both write { debit: 0, credit: amount }.
-    // Reading the supplier's old amount off `debit` found 0 every time, so the
-    // delta came out as the whole new amount and the balance was reduced by it a
-    // second time on top of the original payment.
-    // The balance is recomputed from the rows, not adjusted by a delta against
-    // the stored figure. A delta is only correct while the stored figure is,
-    // and this very function used to corrupt it: any balance an earlier bad
-    // edit skewed would stay skewed forever, because every later delta would be
-    // applied on top of the wrong number. Deriving it means one bad write
-    // cannot outlive the next edit — the same reasoning as the statement's
-    // running balance in utils/ledgerBalance.js.
-    const allSnap = await getDocs(allEntriesQuery);
-    const newBalance = allSnap.docs.reduce((sum, d) => {
-      const row = d.id === entryId
-        ? { debit: 0, credit: numAmount }
-        : d.data();
-      return sum + (Number(row.debit) || 0) - (Number(row.credit) || 0);
-    }, 0);
-
-    const desc = note?.trim() ? note.trim() : (isSupplier ? `Payment made (${mode})` : `Payment received (${mode})`);
-
-    const updatedEntryData = {
+    transaction.update(entryRef, {
       mode: mode || 'Cash',
       note: note || '',
       desc,
+      credit: numAmount,
+      // Clearing debit is what repairs a row an earlier bad edit mangled.
+      debit: 0,
       balanceAfter: newBalance,
       editedAt: serverTimestamp()
-    };
-
-    updatedEntryData.credit = numAmount;
-    // Writing the supplier's amount to `debit` while leaving the original `credit`
-    // in place turned the row into a simultaneous bill and payment, so the derived
-    // balance moved by (new - old) in the wrong direction instead of by -(new).
-    // Clearing debit also repairs any row an earlier edit already mangled.
-    updatedEntryData.debit = 0;
-
-    transaction.update(entryRef, updatedEntryData);
+    });
     transaction.update(personRef, { balance: newBalance });
   });
 };
@@ -100,13 +116,16 @@ export const deleteLedgerEntry = async (personType, personId, entryId) => {
   const entryRef = doc(db, collectionName, personId, "ledger", entryId);
   const personRef = doc(db, collectionName, personId);
 
+  const rows = await readLedgerRows(collectionName, personId);
+  const newBalance = balanceFromRows(rows.filter(r => r.id !== entryId));
+
   return await runTransaction(db, async (transaction) => {
     const entrySnap = await transaction.get(entryRef);
     if (!entrySnap.exists()) {
       throw new Error("Ledger entry not found");
     }
     const entryData = entrySnap.data();
-    
+
     if (entryData.type !== 'payment' && entryData.type !== 'opening') {
       throw new Error("Cannot delete this entry type directly. Please delete the associated bill instead.");
     }
@@ -115,16 +134,6 @@ export const deleteLedgerEntry = async (personType, personId, entryId) => {
     if (!personSnap.exists()) {
       throw new Error("Person not found");
     }
-
-    // Recomputed from the surviving rows for the same reason as the edit path:
-    // subtracting this entry's effect from the stored balance carries forward
-    // any error already in it.
-    const allSnap = await getDocs(query(collection(db, collectionName, personId, "ledger")));
-    const newBalance = allSnap.docs.reduce((sum, d) => {
-      if (d.id === entryId) return sum;
-      const row = d.data();
-      return sum + (Number(row.debit) || 0) - (Number(row.credit) || 0);
-    }, 0);
 
     transaction.update(personRef, { balance: newBalance });
     transaction.delete(entryRef);

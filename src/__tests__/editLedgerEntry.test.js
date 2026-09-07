@@ -20,6 +20,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 let entryData;
 let personData;
 let allRows;
+let getDocsCalls;
+let getDocsCallsAtTransactionOpen;
 const entryUpdate = vi.fn();
 const personUpdate = vi.fn();
 
@@ -34,29 +36,42 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(() => ({})),
   limit: vi.fn(() => ({})),
   serverTimestamp: vi.fn(() => 'ts'),
-  // Two different reads now go through getDocs: the recency guard, and the
-  // full-ledger read the balance is recomputed from. `allRows` stands in for the
-  // person's whole ledger.
-  getDocs: vi.fn(async () => ({
-    empty: false,
-    docs: allRows.map(r => ({ id: r.id, data: () => r })),
-  })),
-  runTransaction: vi.fn(async (_db, fn) =>
-    fn({
+  // One read of the whole ledger now serves both the recency guard and the
+  // balance recompute. `allRows` stands in for the person's ledger.
+  getDocs: vi.fn(async () => {
+    getDocsCalls += 1;
+    return {
+      empty: allRows.length === 0,
+      docs: allRows.map(r => ({ id: r.id, data: () => r })),
+    };
+  }),
+  // The ledger query now runs BEFORE the transaction opens, not inside it — a
+  // query issued from within a runTransaction callback can block on the stream
+  // the transaction holds and hang the save with no error at all. Observed live
+  // on 07 Sept 2026: the button sat on "Saving..." indefinitely and nothing was
+  // written. These tests pin the ordering.
+  runTransaction: vi.fn(async (_db, fn) => {
+    if (getDocsCallsAtTransactionOpen === null) {
+      getDocsCallsAtTransactionOpen = getDocsCalls;
+    }
+    return fn({
       get: async (ref) =>
         ref.sub === 'ledger'
           ? { exists: () => true, data: () => entryData }
           : { exists: () => true, data: () => personData },
       update: (ref, data) =>
         ref.sub === 'ledger' ? entryUpdate(data) : personUpdate(data),
-    })
-  ),
+      delete: () => {},
+    });
+  }),
 }));
 
 let editLedgerEntry;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  getDocsCalls = 0;
+  getDocsCallsAtTransactionOpen = null;
   ({ editLedgerEntry } = await import('../firebase/ledger'));
   // The live state: an Rs 11,000 bill part-paid with Rs 4,000.
   entryData = { type: 'payment', debit: 0, credit: 4000, date: 3, createdAt: 3, seq: 0 };
@@ -126,6 +141,22 @@ describe('editLedgerEntry on a supplier payment', () => {
     // And the skewed balance is corrected rather than carried forward: the rows
     // say 11,000 - 4,000, so 7,000 — not 1,000 nudged by a delta.
     expect(personUpdate.mock.calls[0][0].balance).toBe(7000);
+  });
+});
+
+describe('the ledger read is not made inside the transaction', () => {
+  it('reads the rows before the transaction opens', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 6000, mode: 'Cash' });
+
+    // If this is 0, the query moved back inside runTransaction and the save can
+    // hang forever on the live site with no error to show for it.
+    expect(getDocsCallsAtTransactionOpen).toBeGreaterThan(0);
+  });
+
+  it('reads the ledger exactly once', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 6000, mode: 'Cash' });
+    // One read now serves both the recency guard and the balance recompute.
+    expect(getDocsCalls).toBe(1);
   });
 });
 
