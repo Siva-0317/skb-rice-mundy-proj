@@ -104,10 +104,16 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem =
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-textDark mb-1">Item Name</label>
+                {/* Renaming used to be blocked here, which left no way at all to
+                    tell apart three records all called "Hmt Boiled" — the exact
+                    state that lets a bill be raised against the wrong one.
+                    updateItem already trims the name and runs a case-insensitive
+                    duplicate check that excludes the item itself, and past bills
+                    keep the name they were written with (they store a snapshot
+                    alongside the itemId), so history is unaffected. */}
                 <input
                   type="text"
                   required
-                  disabled={!!editingItem}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-border text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 disabled:bg-panel disabled:text-textMuted min-h-[44px]"

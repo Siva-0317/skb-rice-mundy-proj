@@ -315,3 +315,48 @@ the rendered rows account for every bag the header counts — the equality that
 was 6,381 vs 5,981 before the fix.
 
 71 tests passing (was 53), clean `vite build`, oxlint 42 warnings / 0 errors.
+
+---
+
+## Round 5 — items could not be renamed
+
+Deciding what to do about the three records all called some form of "Hmt Boiled"
+(4,922 in Boiled Rice, 774 in Carshed, 1,038 in Godown — 6,734 bags between them)
+raised a question only the business could answer: are Carshed and Godown storage
+locations, or was the split an accident?
+
+They are locations. So the stock split is real information and merging would
+destroy it; the fix is to rename the records so they stop being confusable at the
+point of sale.
+
+That turned out to be impossible. `AddItemModal` set `disabled={!!editingItem}`
+on the Item Name field, so an existing item's name could not be changed anywhere
+in the app. `updateItem` had supported renaming all along — it trims, rejects an
+empty name, and runs a case-insensitive duplicate check that correctly excludes
+the item being edited. Only the UI blocked it.
+
+The field is now editable. Opening Stock stays locked on edit, which is correct:
+stock moves through Adjust Stock so it is audited and carries a reason.
+
+Past bills are unaffected. A sale stores the item name as a snapshot alongside
+the itemId, so an old invoice keeps the name it was written with — which is the
+right behaviour for a ledger.
+
+### A trap found while testing this
+
+While duplicates exist, **none of them can be saved unchanged**. Saving one of
+the three sends its unchanged name, which collides with its siblings, and the
+guard refuses it — so an operator cannot correct even the MRP on any of them.
+Renaming is not blocked, because the new name collides with nothing.
+
+The order therefore has to be: rename first, then any other edit works. Pinned by
+a test so the behaviour is not mistaken for a bug later.
+
+### Data still to do
+- Rename `Hmt Boiled` (Carshed, 774) and `Hmt Boiled` (Godown, 1,038) so all
+  three are distinct. The Carshed record's stored name also has a trailing space,
+  which the rename will trim away.
+- Delete the two zero-stock `Sona Raw` / `sona raw` records left from round 1
+  testing.
+
+78 tests passing (was 71), clean build, oxlint 42 warnings / 0 errors.
