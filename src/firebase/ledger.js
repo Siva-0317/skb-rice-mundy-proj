@@ -19,6 +19,9 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
   // true latest one. Over-fetch a buffer past same-day ties and re-sort client-side
   // with the same (date, createdAt, seq) tiebreak used for ledger display everywhere else.
   const recentQuery = query(ledgerColRef, orderBy("date", "desc"), limit(10));
+  // The balance is recomputed from every row rather than nudged by a delta — see
+  // reconcileBalance below for why. Ledgers here are a handful of rows per person.
+  const allEntriesQuery = query(ledgerColRef, orderBy("date", "desc"));
 
   await runTransaction(db, async (transaction) => {
     const entrySnap = await transaction.get(entryRef);
@@ -50,11 +53,25 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
       throw new Error("Person not found");
     }
 
-    const oldAmount = isSupplier ? (Number(entryData.debit) || 0) : (Number(entryData.credit) || 0);
-    const amountDelta = numAmount - oldAmount;
-
-    const currentBalance = Number(personSnap.data().balance) || 0;
-    const newBalance = currentBalance - amountDelta;
+    // A payment is stored as a CREDIT for both customers and suppliers —
+    // recordPayment and recordSupplierPayment both write { debit: 0, credit: amount }.
+    // Reading the supplier's old amount off `debit` found 0 every time, so the
+    // delta came out as the whole new amount and the balance was reduced by it a
+    // second time on top of the original payment.
+    // The balance is recomputed from the rows, not adjusted by a delta against
+    // the stored figure. A delta is only correct while the stored figure is,
+    // and this very function used to corrupt it: any balance an earlier bad
+    // edit skewed would stay skewed forever, because every later delta would be
+    // applied on top of the wrong number. Deriving it means one bad write
+    // cannot outlive the next edit — the same reasoning as the statement's
+    // running balance in utils/ledgerBalance.js.
+    const allSnap = await getDocs(allEntriesQuery);
+    const newBalance = allSnap.docs.reduce((sum, d) => {
+      const row = d.id === entryId
+        ? { debit: 0, credit: numAmount }
+        : d.data();
+      return sum + (Number(row.debit) || 0) - (Number(row.credit) || 0);
+    }, 0);
 
     const desc = note?.trim() ? note.trim() : (isSupplier ? `Payment made (${mode})` : `Payment received (${mode})`);
 
@@ -66,11 +83,12 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
       editedAt: serverTimestamp()
     };
 
-    if (isSupplier) {
-      updatedEntryData.debit = numAmount;
-    } else {
-      updatedEntryData.credit = numAmount;
-    }
+    updatedEntryData.credit = numAmount;
+    // Writing the supplier's amount to `debit` while leaving the original `credit`
+    // in place turned the row into a simultaneous bill and payment, so the derived
+    // balance moved by (new - old) in the wrong direction instead of by -(new).
+    // Clearing debit also repairs any row an earlier edit already mangled.
+    updatedEntryData.debit = 0;
 
     transaction.update(entryRef, updatedEntryData);
     transaction.update(personRef, { balance: newBalance });
@@ -93,15 +111,20 @@ export const deleteLedgerEntry = async (personType, personId, entryId) => {
       throw new Error("Cannot delete this entry type directly. Please delete the associated bill instead.");
     }
 
-    const effectOnBalance = (Number(entryData.debit) || 0) - (Number(entryData.credit) || 0);
-
     const personSnap = await transaction.get(personRef);
     if (!personSnap.exists()) {
       throw new Error("Person not found");
     }
-    
-    const currentBalance = Number(personSnap.data().balance) || 0;
-    const newBalance = currentBalance - effectOnBalance;
+
+    // Recomputed from the surviving rows for the same reason as the edit path:
+    // subtracting this entry's effect from the stored balance carries forward
+    // any error already in it.
+    const allSnap = await getDocs(query(collection(db, collectionName, personId, "ledger")));
+    const newBalance = allSnap.docs.reduce((sum, d) => {
+      if (d.id === entryId) return sum;
+      const row = d.data();
+      return sum + (Number(row.debit) || 0) - (Number(row.credit) || 0);
+    }, 0);
 
     transaction.update(personRef, { balance: newBalance });
     transaction.delete(entryRef);
