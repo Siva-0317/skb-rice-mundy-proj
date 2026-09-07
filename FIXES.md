@@ -360,3 +360,109 @@ a test so the behaviour is not mistaken for a bug later.
   testing.
 
 78 tests passing (was 71), clean build, oxlint 42 warnings / 0 errors.
+
+---
+
+## Round 6 — the full sweep after the rename went live
+
+Two defects, both live, both affecting money. Plus a correction to what the
+round 5 note above claims.
+
+### Correction to round 5
+
+That note says `updateItem` "had supported renaming all along ... Only the UI
+blocked it." That was wrong, and unlocking the field is what exposed it.
+
+### R4-D2 (Critical) — no item could be edited at all, ever
+
+`AddItemModal.handleSubmit` called
+
+```js
+updateItem(editingItem.id, { categoryKey, bagKg, mrp })
+```
+
+with no `name`. `updateItem` treats a missing name as blank and throws
+"Item name is required.", so **every** item edit failed — a plain MRP, bag-size
+or category correction included, not only a rename. The console confirmed it:
+seven save attempts, seven identical server-side errors.
+
+This is original code (commit `9f571ac`), not a regression. The disabled Item
+Name field hid it for months: the field looked deliberately read-only rather
+than silently unsent, and nobody had reason to suspect the payload.
+
+`itemRename.test.js` exercises `updateItem` directly, so it passed throughout
+and caught none of this. `itemEditModal.test.jsx` goes through the modal and
+asserts on the payload the form actually sends. Reverting the one-line fix
+turns two of its six tests red.
+
+The catch block also flattened every failure into "Failed to save item",
+hiding the one message an operator can act on — "An item with the name X
+already exists." It now surfaces the real reason.
+
+### R4-D3 (Critical) — supplier payment edits wrote to the wrong side
+
+`recordSupplierPayment` and `recordPayment` both store a payment as
+`{ debit: 0, credit: amount }`. `editLedgerEntry` did not: it branched on
+`isSupplier`, read the old amount off `debit` — always 0 — and wrote the new
+amount to `debit` as well, leaving the original `credit` in place.
+
+Reproduced live on Kalambur AMK: an Rs 11,000 bill, an Rs 4,000 payment,
+edited to Rs 6,000.
+
+| | showed |
+|---|---|
+| the ledger row | debit Rs 6,000 **and** credit Rs 4,000 — a bill and a payment at once |
+| the statement | Rs 13,000 |
+| the header | Rs 1,000 |
+| the Supplier Balance report | "paid Rs 10,000" — summing both sides of the row |
+| **correct** | **Rs 5,000** |
+
+Because `oldAmount` came back 0 the delta was the whole new amount, so the
+balance was reduced by it a second time on top of the original payment. The
+customer path was unaffected: it read and wrote `credit`, where the amount
+actually lives. The branch is gone — a payment is a credit for both.
+
+**The balance is now recomputed from the person's rows** rather than nudged by
+a delta, in both `editLedgerEntry` and `deleteLedgerEntry`. A delta is only
+correct while the stored figure is, and this function used to corrupt that
+figure: a skewed balance would otherwise stay skewed forever, since every
+later delta lands on top of the wrong number. Deriving it means one bad write
+cannot outlive the next edit, and the damaged Kalambur AMK record repairs
+itself the first time anyone edits or deletes that payment. Same reasoning as
+the statement's running balance in `utils/ledgerBalance.js`.
+
+Reverting either half turns six of the eight tests in
+`editLedgerEntry.test.js` red.
+
+### R4-D1 (High) — every deploy risked a blank page
+
+`firebase.json` set no `Cache-Control`, so Firebase served `index.html` with
+`max-age=3600`. For an hour after any deploy a returning user runs the old
+app — and the old content-hashed bundle is gone, so the `"**" -> /index.html`
+rewrite answers the request for it with `index.html` at status 200. With the
+`nosniff` header already in place the browser refuses to execute it and the
+user gets a blank page, recoverable only by a hard refresh.
+
+Confirmed against the live site: `fetch('/assets/index-COr-ZApF.js')` returned
+`200`, an HTML body, `cache-control: max-age=3600` and `nosniff`. This session
+hit it in the middle of testing, which is how it was found.
+
+`index.html` is now `no-cache, no-store, must-revalidate`; `/assets/**` is
+`immutable` for a year, which is safe because those filenames are hashed.
+
+### R4-D4 (Gap) — a category can be created but never deleted or renamed
+
+There is no `deleteCategory` anywhere in `src/`, and no delete or rename
+control in the Item Masters UI — only Add Category inside the Add Item modal.
+Verified by creating one: once saved it is permanent from inside the app.
+
+This is also how round 4's NEW-06 orphan happened. The duplicate "Boiled Rice"
+category was removed from the **Firebase Console**, not the app, so nothing
+re-pointed its item and 400 bags went invisible. While the console is the only
+way to remove a category, that will recur. The `itemGrouping` fix surfaces such
+items rather than hiding them, but the cause is still open.
+
+Not fixed here: deciding what happens to an item whose category is deleted is
+the client's call — block the delete, or re-point the items first.
+
+92 tests passing (was 78), clean build, oxlint 42 warnings / 0 errors.
