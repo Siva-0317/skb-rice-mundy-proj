@@ -69,7 +69,14 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem =
       };
 
       if (editingItem) {
+        // `name` has to travel with the rest of the payload. updateItem treats a
+        // missing name as a blank one and throws "Item name is required.", so
+        // leaving it out did not merely ignore renames — it made *every* item
+        // edit fail, MRP and category changes included. The Item Name field was
+        // disabled at the time, which hid the cause: the field looked read-only
+        // rather than unsent.
         await updateItem(editingItem.id, {
+          name: payload.name,
           categoryKey: payload.categoryKey,
           bagKg: payload.bagKg,
           mrp: payload.mrp
@@ -86,7 +93,10 @@ export default function AddItemModal({ isOpen, onClose, onSuccess, editingItem =
       onClose();
     } catch (error) {
       console.error("Error saving item:", error);
-      showToast("Failed to save item", "error");
+      // The messages updateItem/addItem throw are the actionable ones — "An item
+      // with the name X already exists." tells the operator what to change,
+      // where a flat "Failed to save item" sent them to the console.
+      showToast(error?.message || "Failed to save item", "error");
     } finally {
       setIsSubmitting(false);
     }
