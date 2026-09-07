@@ -466,3 +466,64 @@ Not fixed here: deciding what happens to an item whose category is deleted is
 the client's call — block the delete, or re-point the items first.
 
 92 tests passing (was 78), clean build, oxlint 42 warnings / 0 errors.
+
+### Verified after the deploy (bundle index-WOZfADgy.js)
+
+- **R4-D1** — `index.html` serves `no-cache, no-store, must-revalidate`;
+  `/assets/**` serves `public, max-age=31536000, immutable`.
+- **R4-D2** — all three renames saved: `HMT Boiled` (4,922),
+  `HMT Boiled - Carshed` (774), `HMT Boiled - Godown` (1,038), with the
+  Carshed record's trailing space trimmed away. Item editing works for the
+  first time, which was the blocker on the whole round 5 objective.
+- **R4-D3** — the Kalambur AMK record was repaired by editing the payment
+  once. Row went from `debit 6,000 / credit 4,000 / balance 13,000` to
+  `credit 6,000 / balance 5,000`; the header from Rs 1,000 to Rs 5,000; the
+  Supplier Balance report from `paid 10,000 / payable 1,000` to
+  `paid 6,000 / payable 5,000`. All four sources now agree, on the correct
+  figure. The self-repair worked as designed — corrupted row and skewed
+  stored balance both healed on one edit, no migration.
+- **Data** — both zero-stock `Sona Raw` records deleted. There are now **zero
+  duplicate item names anywhere in the app**, and the purchase item picker
+  lists 16 items, every one uniquely identifiable. That closes the
+  mis-billing risk this whole thread started from.
+- **Reconciliation** — Inventory reads 16 items / 8,307 bags, re-summed row by
+  row and matching the header exactly.
+
+Still open: **R4-D4**, and the leftover `ZZ Test Cat` category, which needs a
+Firebase Console delete precisely because R4-D4 is unfixed.
+
+---
+
+## Round 6 postscript — a fix of mine that hung the app
+
+Worth recording, because the tests did not catch it and the shape is worth
+remembering.
+
+The balance recompute in `9e8c5b6` issued its collection query from **inside**
+the `runTransaction` callback. A query made there can block on the same stream
+the transaction is holding. The payment edit then hung on "Saving..."
+indefinitely — no error, no toast, no console entry, nothing written. It
+surfaced on the very first live use, repairing Kalambur AMK.
+
+The failure was at least clean: the transaction never committed, so no partial
+state. But a payment edit that never returns is worse than the defect it
+replaced.
+
+`e9e44d2` reads the ledger once, before the transaction opens, and that single
+read serves both the recency guard and the recompute — the separate `limit(10)`
+query is gone. The transaction still re-reads and re-validates the entry and
+the person document before writing.
+
+The trade-off, stated plainly: the rows are read a moment before the commit, so
+a concurrent write could in principle land in between. Acceptable here — one
+operator, a handful of rows per person — and it is why the entry's own checks
+stayed inside the transaction.
+
+**Why the tests missed it.** All eight tests in `editLedgerEntry.test.js`
+passed while the feature was unusable, because every one of them tested the
+arithmetic and none tested the mechanics. Two tests now pin the ordering: one
+asserts `getDocs` has already been called by the time the transaction opens,
+the other that the ledger is read exactly once. Moving the read back inside
+turns the first red while the other nine stay green.
+
+94 tests passing, clean build, oxlint 42 warnings / 0 errors.
