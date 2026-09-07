@@ -419,6 +419,25 @@ export const getCategoryPnL = async ({ from, to }) => {
     catMap[c.key] = { key: c.key, label: c.label, bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0 };
   });
 
+  // A transaction whose category no longer exists still has to appear somewhere.
+  // This map was seeded only from live categories, and every accumulator below
+  // was guarded by `if (catMap[catKey])`, so a purchase or sale in a deleted
+  // category was silently dropped from this report — the totals simply got
+  // smaller with nothing to show it. Now that categories can be deleted, that
+  // would quietly erase history the deletion is explicitly meant to preserve.
+  // Unknown keys get their own row instead, named so the cause is obvious.
+  const bucketFor = (catKey) => {
+    if (!catMap[catKey]) {
+      catMap[catKey] = {
+        key: catKey,
+        label: `Uncategorised (${catKey})`,
+        bagsBought: 0, purchaseCost: 0, bagsSold: 0, salesRevenue: 0,
+        isOrphan: true,
+      };
+    }
+    return catMap[catKey];
+  };
+
   purchasesSnap.docs.forEach(docSnap => {
     const p = docSnap.data();
     const pDate = p.date?.toDate ? p.date.toDate() : new Date(p.date || p.createdAt?.toDate?.() || 0);
@@ -426,18 +445,19 @@ export const getCategoryPnL = async ({ from, to }) => {
 
     if (p.items && Array.isArray(p.items)) {
       p.items.forEach(row => {
-        const catKey = row.categoryKey || itemCatMap.get(row.itemId) || 'raw';
-        if (catMap[catKey]) {
-          catMap[catKey].bagsBought += Number(row.bags || 0);
-          catMap[catKey].purchaseCost += Number(row.amount || (Number(row.bags || 0) * Number(row.rate || 0)));
-        }
+        // Defaulting an unknown key to 'raw' did not just lose the row, it filed
+        // it under Raw Rice and inflated that category's figures. Unknown stays
+        // unknown now.
+        const catKey = row.categoryKey || itemCatMap.get(row.itemId) || 'unknown';
+        const bucket = bucketFor(catKey);
+        bucket.bagsBought += Number(row.bags || 0);
+        bucket.purchaseCost += Number(row.amount || (Number(row.bags || 0) * Number(row.rate || 0)));
       });
     } else {
-      const catKey = p.categoryKey || itemCatMap.get(p.itemId) || 'raw';
-      if (catMap[catKey]) {
-        catMap[catKey].bagsBought += Number(p.bags || 0);
-        catMap[catKey].purchaseCost += Number(p.total || p.totalAmount || 0);
-      }
+      const catKey = p.categoryKey || itemCatMap.get(p.itemId) || 'unknown';
+      const bucket = bucketFor(catKey);
+      bucket.bagsBought += Number(p.bags || 0);
+      bucket.purchaseCost += Number(p.total || p.totalAmount || 0);
     }
   });
 
@@ -457,13 +477,12 @@ export const getCategoryPnL = async ({ from, to }) => {
           else if (lower.includes('basmathi')) catKey = 'basmathi';
           else if (lower.includes('seeraga') || lower.includes('samba')) catKey = 'seeraga';
         }
-        if (!catKey) catKey = 'raw';
-        if (catMap[catKey]) {
-          const b = Number(row.bags || 0);
-          const amt = row.amount !== undefined ? Number(row.amount) : b * Number(row.rate || 0);
-          catMap[catKey].bagsSold += b;
-          catMap[catKey].salesRevenue += amt;
-        }
+        if (!catKey) catKey = 'unknown';
+        const bucket = bucketFor(catKey);
+        const b = Number(row.bags || 0);
+        const amt = row.amount !== undefined ? Number(row.amount) : b * Number(row.rate || 0);
+        bucket.bagsSold += b;
+        bucket.salesRevenue += amt;
       });
     }
   });

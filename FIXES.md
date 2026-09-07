@@ -527,3 +527,64 @@ the other that the ledger is read exactly once. Moving the read back inside
 turns the first red while the other nine stay green.
 
 94 tests passing, clean build, oxlint 42 warnings / 0 errors.
+
+---
+
+## Round 7 — R4-D4 closed: categories can be deleted
+
+Client's decision: deleting a category deletes the items filed under it, but
+**not** the transactions those items appear in.
+
+### Why that is safe for history
+
+Every sale line stores `{ itemId, item: <name>, cat: <categoryKey> }` and every
+purchase line stores `{ itemId, itemName, categoryKey }`, all written at the
+time of the transaction. A bill therefore does not read the item document to
+display itself, so an old invoice still shows the right product at the right
+price after both the item and the category are gone. That is the correct
+behaviour for a ledger anyway: a bill should record what was sold that day, not
+follow later edits to the master record.
+
+What genuinely does go is the **stock** those items held — bags and stock value
+drop out of every total. `getCategoryDeletionImpact()` measures that before
+anything is deleted so the confirmation can state the number, alongside a count
+of the sales and purchases that will be kept. The dialog requires the category
+name to be typed, matching the existing customer-delete pattern.
+
+`deleteCategory()` deliberately ignores the "item has transaction history" guard
+that `deleteItem` enforces, which is why it needs its own implementation rather
+than looping over `deleteItem`. It also removes items whose category document is
+already missing, so it cleans up the NEW-06 orphan state.
+
+### A trap that had to be fixed first
+
+`getCategoryPnL` seeded its accumulator only from the live `categories`
+collection and wrapped every accumulator line in `if (catMap[catKey])`. A
+purchase or sale in a category that no longer existed was **silently dropped**
+from the report — the totals simply got smaller, with nothing to indicate it.
+
+Shipping category deletion on top of that would have quietly erased exactly the
+history the client asked to preserve. Keeping the rows in the database while
+they vanish from the P&L is the same loss from the business's point of view.
+Unknown keys now get their own `Uncategorised (<key>)` row.
+
+A second, pre-existing bug in the same lines: an unresolvable category was
+defaulted to `'raw'`, so those figures were not lost but **misfiled**, inflating
+Raw Rice. Unknown now stays unknown.
+
+Reverting the report fix turns four of that file's five tests red; reverting the
+cascade turns three of the other file's eleven red.
+
+### Worth a decision, not changed here
+
+The standalone Delete Item button still refuses an item that appears in any sale
+or purchase, telling the operator to deactivate it instead. The category cascade
+now deletes such items anyway. So the guard offers a safety that is one click
+away via the category, and the client's written note ("delete item created at
+any time / alter or delete the item & its stock") arguably asks for it to go.
+Left as-is because removing it was not what was asked for.
+
+No security-rules change was needed: `categories` and `items` already allow
+`delete: if isOwner()`. The stale comment on the items rule has been corrected.
+
+110 tests passing (was 94), clean build, oxlint 42 warnings / 0 errors.

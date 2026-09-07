@@ -34,6 +34,87 @@ export const updateCategory = async (id, data) => {
 };
 
 
+/**
+ * Count what a category delete would take with it, without deleting anything.
+ *
+ * The operator needs to see the size of this before confirming: the items go,
+ * and their stock goes out of every total with them. The transactions do not —
+ * a sale or purchase stores the item name and category key as a snapshot
+ * alongside the id, so historic bills keep reading correctly after both the
+ * item and the category are gone.
+ */
+export const getCategoryDeletionImpact = async (categoryKey) => {
+  const itemsSnap = await getDocs(query(collection(db, "items"), where("categoryKey", "==", categoryKey)));
+  const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const itemIds = new Set(items.map(i => i.id));
+
+  const [salesSnap, purchasesSnap] = await Promise.all([
+    getDocs(collection(db, "sales")),
+    getDocs(collection(db, "purchases")),
+  ]);
+
+  const countsLine = (row) => itemIds.has(row?.itemId);
+  const affectedSales = salesSnap.docs.filter(d => (d.data().items || []).some(countsLine)).length;
+  const affectedPurchases = purchasesSnap.docs.filter(d => {
+    const p = d.data();
+    return Array.isArray(p.items) ? p.items.some(countsLine) : itemIds.has(p.itemId);
+  }).length;
+
+  return {
+    items,
+    itemCount: items.length,
+    totalBags: items.reduce((sum, i) => sum + (Number(i.stock) || 0), 0),
+    stockValue: items.reduce((sum, i) => sum + (Number(i.stock) || 0) * (Number(i.mrp) || 0), 0),
+    affectedSales,
+    affectedPurchases,
+  };
+};
+
+/**
+ * Delete a category and every item filed under it. Transactions are left alone.
+ *
+ * This deliberately ignores the "item has transaction history" guard that
+ * deleteItem enforces. That guard exists to stop a bill pointing at nothing,
+ * but a bill does not point at the item document for its display: every sale
+ * line stores { itemId, item: <name>, cat: <categoryKey> } and every purchase
+ * line stores { itemId, itemName, categoryKey }, all written at the time of the
+ * sale. So an old invoice still shows the right product at the right price
+ * after the master record is gone, which is the correct behaviour for a ledger
+ * anyway — a bill should record what was sold that day, not follow later edits.
+ *
+ * What genuinely does go: the stock those items held. Bags and stock value drop
+ * out of every total. That is why getCategoryDeletionImpact exists — so the
+ * confirmation can state the number before it happens.
+ */
+export const deleteCategory = async (categoryKey) => {
+  const catsSnap = await getDocs(query(collection(db, "categories"), where("key", "==", categoryKey)));
+  const itemsSnap = await getDocs(query(collection(db, "items"), where("categoryKey", "==", categoryKey)));
+
+  if (catsSnap.empty && itemsSnap.empty) {
+    throw new Error("Category not found.");
+  }
+
+  const refs = [
+    ...itemsSnap.docs.map(d => d.ref),
+    ...catsSnap.docs.map(d => d.ref),
+  ];
+
+  // Firestore caps a batch at 500 operations.
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 450).forEach(ref => batch.delete(ref));
+    await batch.commit();
+  }
+
+  return {
+    deleted: true,
+    categoryKey,
+    itemsDeleted: itemsSnap.size,
+    categoryDocsDeleted: catsSnap.size,
+  };
+};
+
 export const getItems = async () => {
   const q = query(collection(db, "items"), orderBy("name", "asc"));
   const snapshot = await getDocs(q);

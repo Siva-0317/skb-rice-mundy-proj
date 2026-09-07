@@ -58,8 +58,11 @@ service cloud.firestore {
       allow create: if isOwner();
       // Owners may edit anything; everyone else may only move stock.
       allow update: if isOwner() || (isAuthenticated() && isStockOnlyUpdate());
-      // Guarded in the client: deleteItem refuses any item that appears in a
-      // sale or a purchase.
+      // Guarded in the client, with one deliberate exception: deleteItem refuses
+      // any item that appears in a sale or a purchase, but deleteCategory
+      // cascades to its items regardless. That is safe for history because every
+      // sale and purchase line stores the item name and category as a snapshot
+      // alongside the id, so old bills keep reading correctly.
       allow delete: if isOwner();
     }
 

@@ -7,6 +7,7 @@ import { groupItemsByCategory } from '../utils/itemGrouping';
 import { Pencil, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import DeleteItemModal from './DeleteItemModal';
+import DeleteCategoryModal from './DeleteCategoryModal';
 
 export default function ItemsList() {
   const location = useLocation();
@@ -20,6 +21,7 @@ export default function ItemsList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -156,6 +158,15 @@ export default function ItemsList() {
                           </span>
                         )}
                         <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} items</span>
+                        {isOwner && !category.isOrphan && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setCategoryToDelete(category); }}
+                            className="text-textMuted hover:text-red-600 transition-colors p-1"
+                            title="Delete Category"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -233,6 +244,13 @@ export default function ItemsList() {
         item={itemToDelete}
         onClose={() => setItemToDelete(null)}
         onSuccess={handleDeleteSuccess}
+      />
+
+      <DeleteCategoryModal
+        isOpen={!!categoryToDelete}
+        category={categoryToDelete}
+        onClose={() => setCategoryToDelete(null)}
+        onSuccess={fetchData}
       />
     </div>
   );
