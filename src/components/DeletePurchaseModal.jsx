@@ -1,13 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trash2, AlertTriangle, X } from 'lucide-react';
-import { deletePurchase } from '../firebase/purchases';
+import { deletePurchase, getPurchaseDeletionBlockers } from '../firebase/purchases';
 import { useToast } from '../context/ToastContext';
 
 export default function DeletePurchaseModal({ isOpen, onClose, onSuccess, purchase }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [blockers, setBlockers] = useState(null); // null = still checking
   const { showToast } = useToast();
 
+  // Check whether the bags from this purchase are still in stock. If some were
+  // already sold, deleting would push stock negative, so we block up front.
+  useEffect(() => {
+    if (!isOpen || !purchase) return;
+    let cancelled = false;
+    setBlockers(null);
+    getPurchaseDeletionBlockers(purchase)
+      .then(b => { if (!cancelled) setBlockers(b); })
+      .catch(() => { if (!cancelled) setBlockers([]); });
+    return () => { cancelled = true; };
+  }, [isOpen, purchase]);
+
   if (!isOpen || !purchase) return null;
+
+  const isBlocked = Array.isArray(blockers) && blockers.length > 0;
+  const isChecking = blockers === null;
 
   const handleClose = () => {
     if (isDeleting) return;
@@ -68,6 +84,22 @@ export default function DeletePurchaseModal({ isOpen, onClose, onSuccess, purcha
               <p className="font-bold mt-2">This cannot be undone.</p>
             </div>
           </div>
+          {isBlocked && (
+            <div className="flex gap-3 text-amber-800 bg-amber-50 p-3 rounded-xl border border-amber-200">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold mb-1">Cannot delete — stock from this purchase has already been sold</p>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {blockers.map(b => (
+                    <li key={b.itemId}>
+                      {b.name}: {b.bags} bags came in, only {b.stock} in stock now ({b.shortfall} sold or adjusted)
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2">Delete the related sales or adjust the stock first, then try again.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -83,10 +115,10 @@ export default function DeletePurchaseModal({ isOpen, onClose, onSuccess, purcha
           <button
             type="button"
             onClick={handleDelete}
-            disabled={isDeleting}
+            disabled={isDeleting || isChecking || isBlocked}
             className="px-5 py-2 rounded-xl font-medium text-sm text-white bg-debit hover:bg-red-700 shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
           >
-            {isDeleting ? 'Deleting...' : 'Delete Purchase'}
+            {isDeleting ? 'Deleting...' : isChecking ? 'Checking stock…' : 'Delete Purchase'}
           </button>
         </div>
       </div>

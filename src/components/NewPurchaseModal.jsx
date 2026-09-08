@@ -44,7 +44,8 @@ export default function NewPurchaseModal({ isOpen, onClose, onSuccess }) {
 
   if (!isOpen) return null;
 
-  const filteredItems = items.filter(i => !categoryKey || i.categoryKey === categoryKey);
+  // Inactive items are hidden from purchasing too — reactivate in Masters to buy again.
+  const filteredItems = items.filter(i => i.active !== false && (!categoryKey || i.categoryKey === categoryKey));
   const totalCost = (Number(bags) || 0) * (Number(costPerBag) || 0);
 
   const handleCategoryChange = (key) => {

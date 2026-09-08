@@ -1,6 +1,7 @@
 import { doc, collection, getDocs, getDoc, query, orderBy, limit, where, runTransaction, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "./config";
 import { getISTTodayDateString, sortByDateThenCreatedAt } from "../utils/dateIST";
+import { describeAllocations } from "./supplierAllocations";
 
 export const getRecentPurchases = async () => {
   const q = query(collection(db, "purchases"), orderBy("date", "desc"), limit(15));
@@ -242,13 +243,18 @@ export const deletePurchase = async (purchaseId) => {
     const pData = purchaseDoc.data();
     const total = pData.total || pData.totalAmount || 0;
     const amountPaid = pData.amountPaid || 0;
+    // The part of amountPaid that came from supplier-level payments. Those
+    // payments are real money and stay on the supplier's ledger as credit, so
+    // they must not be added back when the bill goes; only the bill-level
+    // payments (whose ledger rows are deleted below) are reversed.
+    const paidViaSupplier = Math.min(amountPaid, Number(pData.amountPaidViaSupplier || 0));
 
     const supplierData = supplierDoc.exists() ? supplierDoc.data() : {};
     const currentSupplierBalance = supplierData.balance || 0;
-    
+
     // Reversing the purchase: remove the debt (total) and also remove the
-    // payment already made (amountPaid) since we're erasing the whole bill.
-    const newSupplierBalance = currentSupplierBalance - total + amountPaid;
+    // bill-level payments already made, since we're erasing the whole bill.
+    const newSupplierBalance = currentSupplierBalance - total + (amountPaid - paidViaSupplier);
 
     // Compute new stock for each item (reduce by the bags that were added)
     const newStocks = {};
@@ -258,10 +264,22 @@ export const deletePurchase = async (purchaseId) => {
       
     for (const row of pRows) {
       if (!row.itemId) continue;
-      const currentStock = itemDocs[row.itemId]?.exists()
-        ? (itemDocs[row.itemId].data().stock || 0)
-        : 0;
-      newStocks[row.itemId] = Math.max(0, currentStock - (row.bags || 0));
+      const itemSnap = itemDocs[row.itemId];
+      const currentStock = itemSnap?.exists() ? (itemSnap.data().stock || 0) : 0;
+      const bags = Number(row.bags) || 0;
+      // Reversing a purchase removes its bags from stock. If some of those bags have
+      // already been sold, the stock cannot absorb the reversal: the old code clamped
+      // it to zero, which silently lost the shortfall and later left phantom stock
+      // when the sale was reversed. Refuse instead and tell the user what to do.
+      if (currentStock < bags) {
+        const name = itemSnap?.exists() ? (itemSnap.data().name || 'this item') : 'this item';
+        throw new Error(
+          `Cannot delete: ${bags} bags of ${name} came in on this purchase but only ` +
+          `${currentStock} are in stock now (${bags - currentStock} already sold or adjusted). ` +
+          `Delete the related sales or adjust the stock first.`
+        );
+      }
+      newStocks[row.itemId] = currentStock - bags;
     }
 
     // ── PHASE 3: ALL WRITES ─────────────────────────────────────────────
@@ -297,25 +315,70 @@ export const deletePurchase = async (purchaseId) => {
     const q = query(ledgerRef);
     const ledgerSnap = await getDocs(q);
     
-    const docsToDelete = ledgerSnap.docs.filter(d => {
+    // Rows that belong to the bill (the bill line itself and bill-level
+    // payments) are deleted. A supplier-level payment that was merely
+    // allocated to this bill is kept — the money was paid — and only its
+    // allocation entry for this bill is dropped.
+    const docsToDelete = [];
+    const docsToUnallocate = [];
+    ledgerSnap.docs.forEach(d => {
       const data = d.data();
-      return (data.linkedBillNo === result.billNo) || 
-             (data.desc && data.desc.includes(result.billNo));
+      const allocs = Array.isArray(data.allocations) ? data.allocations : null;
+      if (allocs) {
+        if (allocs.some(a => a.purchaseId === purchaseId)) docsToUnallocate.push(d);
+        return;
+      }
+      if ((data.linkedBillNo === result.billNo) || (data.desc && data.desc.includes(result.billNo))) {
+        docsToDelete.push(d);
+      }
     });
 
-    if (docsToDelete.length > 0) {
-      const chunks = [];
-      for(let i=0; i<docsToDelete.length; i+=500) {
-        chunks.push(docsToDelete.slice(i, i+500));
-      }
-
-      for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        chunk.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-      }
+    const ops = [
+      ...docsToDelete.map(d => (batch) => batch.delete(d.ref)),
+      ...docsToUnallocate.map(d => (batch) => {
+        const remaining = d.data().allocations.filter(a => a.purchaseId !== purchaseId);
+        const base = String(d.data().desc || '').split(' · applied to ')[0];
+        batch.update(d.ref, {
+          allocations: remaining,
+          desc: base + describeAllocations(remaining),
+        });
+      }),
+    ];
+    for (let i = 0; i < ops.length; i += 500) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + 500).forEach(op => op(batch));
+      await batch.commit();
     }
   }
 
   return { deleted: true, billNo: result.billNo };
+};
+
+
+/**
+ * Pre-check used by the delete dialog: returns the item lines whose current stock is
+ * lower than the bags that arrived on this purchase (i.e. bags already sold), so the
+ * dialog can explain the block before the user tries. Empty array = safe to delete.
+ */
+export const getPurchaseDeletionBlockers = async (purchase) => {
+  const rows = purchase.rows && Array.isArray(purchase.rows)
+    ? purchase.rows
+    : [{ itemId: purchase.itemId, bags: purchase.bags, itemName: purchase.itemName }];
+  const blockers = [];
+  for (const row of rows) {
+    if (!row.itemId) continue;
+    const snap = await getDoc(doc(db, 'items', row.itemId));
+    const stock = snap.exists() ? Number(snap.data().stock || 0) : 0;
+    const bags = Number(row.bags) || 0;
+    if (stock < bags) {
+      blockers.push({
+        itemId: row.itemId,
+        name: snap.exists() ? (snap.data().name || row.itemName || 'item') : (row.itemName || 'item'),
+        bags,
+        stock,
+        shortfall: bags - stock,
+      });
+    }
+  }
+  return blockers;
 };

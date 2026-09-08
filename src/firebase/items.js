@@ -16,11 +16,41 @@ export const getCategories = async () => {
   });
 };
 
+const slugifyCategory = (label) => String(label || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const normaliseLabel = (label) => String(label || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+// A category name must be unique, ignoring case and spacing. Without this, "raw rice"
+// was accepted alongside "Raw Rice" and the two could never be told apart in reports.
+// The key is checked too because it is what items and bills reference.
+const assertCategoryUnique = async ({ label, key }, excludeId = null) => {
+  const snapshot = await getDocs(collection(db, "categories"));
+  const wantedLabel = normaliseLabel(label);
+  const wantedKey = key ? String(key).trim().toLowerCase() : null;
+  snapshot.docs.forEach(d => {
+    if (excludeId && d.id === excludeId) return;
+    const c = d.data();
+    if (normaliseLabel(c.label) === wantedLabel) {
+      throw new Error(`A category named "${c.label}" already exists.`);
+    }
+    if (wantedKey && String(c.key || '').toLowerCase() === wantedKey) {
+      throw new Error(`A category with the key "${c.key}" already exists.`);
+    }
+  });
+};
+
 export const addCategory = async (data) => {
+  const label = String(data.label || '').trim();
+  if (!label) throw new Error("Category name is required.");
+  const key = (data.key && String(data.key).trim()) || slugifyCategory(label);
+  if (!key) throw new Error("Category key could not be derived from the name.");
+  await assertCategoryUnique({ label, key });
+
   const newDocRef = doc(collection(db, "categories"));
   const payload = {
     ...data,
-    key: data.key || data.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    label,
+    key,
+    labelTamil: data.labelTamil ? String(data.labelTamil).trim() : '',
     order: data.order || Date.now(), // Fallback order to end of list
     createdAt: serverTimestamp()
   };
@@ -30,7 +60,14 @@ export const addCategory = async (data) => {
 
 export const updateCategory = async (id, data) => {
   const catRef = doc(db, "categories", id);
-  await updateDoc(catRef, { ...data, updatedAt: serverTimestamp() });
+  const patch = { ...data };
+  if (patch.label !== undefined) {
+    patch.label = String(patch.label).trim();
+    if (!patch.label) throw new Error("Category name is required.");
+    await assertCategoryUnique({ label: patch.label, key: patch.key }, id);
+  }
+  if (patch.labelTamil !== undefined) patch.labelTamil = String(patch.labelTamil).trim();
+  await updateDoc(catRef, { ...patch, updatedAt: serverTimestamp() });
 };
 
 
@@ -339,6 +376,23 @@ export const seedIfEmpty = async () => {
   }
 };
 
+/**
+ * How many purchase and sale bills reference an item. Used both to refuse a
+ * delete and to tell the operator up front, in the dialog, why the button is
+ * disabled. Bills snapshot the item name, so history would survive a delete,
+ * but reports that group by itemId would silently lose those lines.
+ */
+export const getItemTransactionUsage = async (itemId) => {
+  const purchasesSnap = await getDocs(query(collection(db, "purchases"), where("itemId", "==", itemId)));
+  // Sale lines live inside an array, which Firestore cannot query by field; scan client-side.
+  const salesSnap = await getDocs(collection(db, "sales"));
+  const sales = salesSnap.docs.filter(d => {
+    const data = d.data();
+    return Array.isArray(data.items) && data.items.some(i => i.itemId === itemId);
+  }).length;
+  return { purchases: purchasesSnap.size, sales };
+};
+
 export const deleteItem = async (itemId) => {
   const itemRef = doc(db, "items", itemId);
   const itemSnap = await getDoc(itemRef);
@@ -349,23 +403,12 @@ export const deleteItem = async (itemId) => {
   
   const itemName = itemSnap.data().name || 'Unknown Item';
 
-  // Check if item is used in purchases
-  const purchasesQ = query(collection(db, "purchases"), where("itemId", "==", itemId), limit(1));
-  const purchasesSnap = await getDocs(purchasesQ);
-  if (!purchasesSnap.empty) {
-    throw new Error(`Cannot delete '${itemName}' — it has existing purchase records. Deactivate it instead using the Active toggle.`);
+  const usage = await getItemTransactionUsage(itemId);
+  if (usage.purchases > 0) {
+    throw new Error(`Cannot delete '${itemName}' — it appears on ${usage.purchases} purchase bill(s). Deactivate it instead using the Active toggle.`);
   }
-
-  // Check if item is used in sales
-  // Fetch all sales and filter client-side as Firestore cannot natively query partial objects inside arrays
-  const salesSnap = await getDocs(collection(db, "sales"));
-  const isUsedInSales = salesSnap.docs.some(d => {
-    const data = d.data();
-    return data.items && data.items.some(i => i.itemId === itemId);
-  });
-  
-  if (isUsedInSales) {
-    throw new Error(`Cannot delete '${itemName}' — it has existing sales records. Deactivate it instead using the Active toggle.`);
+  if (usage.sales > 0) {
+    throw new Error(`Cannot delete '${itemName}' — it appears on ${usage.sales} sale bill(s). Deactivate it instead using the Active toggle.`);
   }
 
   // If no transactions exist, safely delete the item

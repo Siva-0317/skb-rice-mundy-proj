@@ -38,13 +38,16 @@ export default function RecordSupplierPaymentModal({ isOpen, onClose, onSuccess,
 
     setIsSubmitting(true);
     try {
-      await recordSupplierPayment(supplierId, {
+      const result = await recordSupplierPayment(supplierId, {
         amount: numAmount,
         mode,
         date: paymentDate
       });
 
-      showToast("Payment recorded successfully", "success");
+      const applied = result?.allocations?.length
+        ? ` Applied to ${result.allocations.map(a => a.billNo || 'bill').join(', ')}.`
+        : '';
+      showToast(`Payment recorded successfully.${applied}`, "success");
       onSuccess && onSuccess();
       onClose();
     } catch (err) {

@@ -211,14 +211,30 @@ export default function Sales() {
   // Calculations
   const calculatedRows = rows.map(row => {
     const unitPrice = row.priceField === 'rate' ? Number(row.rate || 0) : Number(row.mrp !== undefined && row.mrp !== '' ? row.mrp : (row.rate || 0));
-    const amount = (Number(row.bags) || 0) * unitPrice;
+    // Negative bags are rejected on save; don't let them render a negative subtotal meanwhile.
+    const amount = Math.max(0, Number(row.bags) || 0) * Math.max(0, unitPrice);
     return { ...row, amount };
   });
+
+  // Only active items may be picked on a new line. `items` keeps every item so bills
+  // that reference a since-deactivated item still resolve when opened for editing.
+  const sellableItems = items.filter(i => i.active !== false);
 
   const totalItemsAmount = calculatedRows.reduce((sum, row) => sum + row.amount, 0);
   const numAdvance = Number(advance) || 0;
   const finalTotal = totalItemsAmount - numAdvance;
-  const isValidSale = customerId && calculatedRows.some(r => r.itemId && Number(r.bags) > 0);
+  // A negative "paid now" used to be accepted and saved, which recorded a negative
+  // credit and inflated the customer's balance. Both money fields must be >= 0 and
+  // finite, and every line must carry a positive bag count (a negative row used to
+  // render a negative subtotal as an "advance").
+  const hasNegativeBags = calculatedRows.some(r => r.itemId && Number(r.bags) < 0);
+  const advanceInvalid = !Number.isFinite(numAdvance) || numAdvance < 0;
+  const paymentInvalid = !Number.isFinite(Number(paymentAmount) || 0) || (Number(paymentAmount) || 0) < 0;
+  const moneyInvalid = advanceInvalid || paymentInvalid;
+  const isValidSale = Boolean(customerId)
+    && calculatedRows.some(r => r.itemId && Number(r.bags) > 0)
+    && !hasNegativeBags
+    && !moneyInvalid;
 
   const handleEditClick = (sale) => {
     setEditingSaleId(sale.id);
@@ -299,6 +315,18 @@ export default function Sales() {
     const todayStr = getISTTodayDateString();
     if (date > todayStr) {
       showToast("Sale date cannot be in the future", "error");
+      return;
+    }
+    if (advanceInvalid) {
+      showToast("Amount paid now cannot be negative", "error");
+      return;
+    }
+    if (paymentInvalid) {
+      showToast("Payment amount cannot be negative", "error");
+      return;
+    }
+    if (hasNegativeBags) {
+      showToast("Bags cannot be negative", "error");
       return;
     }
 
@@ -516,7 +544,7 @@ export default function Sales() {
             {/* Items Table */}
             <InvoiceRowsTable
               rows={calculatedRows}
-              items={items}
+              items={sellableItems}
               onAddRow={handleAddRow}
               onRemoveRow={handleRemoveRow}
               onRowChange={handleRowChange}
@@ -546,8 +574,11 @@ export default function Sales() {
                     value={advance}
                     onChange={(e) => setAdvance(e.target.value)}
                     placeholder="0"
-                    className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
+                    className={`w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm ${advanceInvalid ? 'border-debit' : 'border-border'}`}
                   />
+                  {advanceInvalid && (
+                    <p className="text-xs text-debit mt-1">Amount paid now cannot be negative</p>
+                  )}
                   <p className="text-xs text-textMuted mt-1">
                     Enter the amount the customer is paying today. If equal to or greater than the bill total, the bill is fully settled. Any excess is auto-applied to their outstanding balance.
                   </p>
@@ -595,8 +626,11 @@ export default function Sales() {
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(e.target.value)}
                       placeholder="0"
-                      className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm"
+                      className={`w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-gold/50 text-sm ${paymentInvalid ? 'border-debit' : 'border-border'}`}
                     />
+                    {paymentInvalid && (
+                      <p className="text-xs text-debit mt-1">Payment amount cannot be negative</p>
+                    )}
                     <p className="text-xs text-textMuted mt-1">
                       Leave blank if no payment is being collected with this edit.
                     </p>

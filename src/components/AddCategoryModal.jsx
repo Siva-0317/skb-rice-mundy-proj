@@ -8,6 +8,7 @@ export default function AddCategoryModal({ isOpen, onClose, onSuccess, categoryT
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     label: '',
+    labelTamil: '',
     key: '',
   });
 
@@ -16,10 +17,11 @@ export default function AddCategoryModal({ isOpen, onClose, onSuccess, categoryT
       if (categoryToEdit) {
         setFormData({
           label: categoryToEdit.label || categoryToEdit.category || '',
+          labelTamil: categoryToEdit.labelTamil || '',
           key: categoryToEdit.key || categoryToEdit.categoryKey || '',
         });
       } else {
-        setFormData({ label: '', key: '' });
+        setFormData({ label: '', labelTamil: '', key: '' });
       }
     }
   }, [isOpen, categoryToEdit]);
@@ -37,6 +39,7 @@ export default function AddCategoryModal({ isOpen, onClose, onSuccess, categoryT
     try {
       const payload = {
         label: formData.label.trim(),
+        labelTamil: formData.labelTamil.trim(),
       };
       
       // Auto-generate key for new categories if missing
@@ -54,7 +57,7 @@ export default function AddCategoryModal({ isOpen, onClose, onSuccess, categoryT
       onClose();
     } catch (error) {
       console.error("Error saving category:", error);
-      showToast("Failed to save category", "error");
+      showToast(error.message || "Failed to save category", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -80,6 +83,16 @@ export default function AddCategoryModal({ isOpen, onClose, onSuccess, categoryT
               onChange={(e) => setFormData({ ...formData, label: e.target.value })}
               placeholder="e.g. Broken Rice"
               required
+              className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-textDark mb-1">Tamil Name (optional)</label>
+            <input
+              type="text"
+              value={formData.labelTamil}
+              onChange={(e) => setFormData({ ...formData, labelTamil: e.target.value })}
+              placeholder="e.g. நொய் அரிசி"
               className="w-full px-3 py-2 rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-gold/50"
             />
           </div>

@@ -50,8 +50,35 @@ export const getSalesByMonth = async (year, monthIdx) => {
   return sortByDateThenCreatedAt(sales);
 };
 
+// Money and quantity guards shared by create/edit. A negative "paid now" once slipped
+// through the UI and was saved as a negative credit, inflating the customer's balance;
+// the service layer must refuse it regardless of what the form sends.
+const assertNonNegativeMoney = (value, label) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${label} cannot be negative.`);
+  }
+  return n;
+};
+const assertSaleRows = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error("A sale needs at least one item.");
+  }
+  rows.forEach(r => {
+    const bags = Number(r.bags);
+    if (!Number.isFinite(bags) || bags <= 0) {
+      throw new Error(`Bags must be greater than zero for ${r.item || 'every item'}.`);
+    }
+    const price = Number(r.mrp !== undefined && r.mrp !== null ? r.mrp : (r.rate || 0));
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error(`Price cannot be negative for ${r.item || 'an item'}.`);
+    }
+  });
+};
+
 export const createSale = async ({ customerId, customerName, date, advance, remarks, rows }) => {
-  const advancePaid = Number(advance) || 0;
+  const advancePaid = assertNonNegativeMoney(advance || 0, "Amount paid now");
+  assertSaleRows(rows);
   let saleTotal = 0;
   
   // Calculate total before transaction
@@ -203,8 +230,9 @@ export const createSale = async ({ customerId, customerName, date, advance, rema
 
 export const editSale = async (saleId, updatedData, uid) => {
   const { customerId: newCustomerId, customerName: newCustomerName, date, advance, remarks, rows, paymentAmount, paymentMode } = updatedData;
-  const newAdvancePaid = Number(advance) || 0;
-  const numPayment = Number(paymentAmount) || 0;
+  const newAdvancePaid = assertNonNegativeMoney(advance || 0, "Amount paid now");
+  const numPayment = assertNonNegativeMoney(paymentAmount || 0, "Payment amount");
+  assertSaleRows(rows);
   const selectedMode = paymentMode || 'Cash';
   let newSaleTotal = 0;
   

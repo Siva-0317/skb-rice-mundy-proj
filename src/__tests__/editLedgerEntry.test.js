@@ -20,10 +20,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 let entryData;
 let personData;
 let allRows;
-let getDocsCalls;
+let purchaseRows;            // the supplier's purchase bills (for allocation)
+let getDocsCalls;            // ledger reads only
+let purchaseQueryCalls;
 let getDocsCallsAtTransactionOpen;
 const entryUpdate = vi.fn();
 const personUpdate = vi.fn();
+const purchaseUpdate = vi.fn();
 
 vi.mock('../firebase/config', () => ({ db: {} }));
 
@@ -31,14 +34,24 @@ vi.mock('../utils/dateIST', () => ({ toMillis: (v) => Number(v) || 0 }));
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((_db, col, id, sub, subId) => ({ col, id, sub, subId })),
-  collection: vi.fn(() => ({})),
-  query: vi.fn(() => ({})),
+  collection: vi.fn((_db, col) => ({ col })),
+  query: vi.fn((c) => c),
   orderBy: vi.fn(() => ({})),
+  where: vi.fn(() => ({})),
   limit: vi.fn(() => ({})),
   serverTimestamp: vi.fn(() => 'ts'),
   // One read of the whole ledger now serves both the recency guard and the
-  // balance recompute. `allRows` stands in for the person's ledger.
-  getDocs: vi.fn(async () => {
+  // balance recompute. `allRows` stands in for the person's ledger. A supplier
+  // edit additionally reads the supplier's purchases (a different collection)
+  // so the payment can be re-spread over the open bills.
+  getDocs: vi.fn(async (q) => {
+    if (q && q.col === 'purchases') {
+      purchaseQueryCalls += 1;
+      return {
+        empty: purchaseRows.length === 0,
+        docs: purchaseRows.map(r => ({ id: r.id, ref: { col: 'purchases', id: r.id }, data: () => r })),
+      };
+    }
     getDocsCalls += 1;
     return {
       empty: allRows.length === 0,
@@ -55,12 +68,19 @@ vi.mock('firebase/firestore', () => ({
       getDocsCallsAtTransactionOpen = getDocsCalls;
     }
     return fn({
-      get: async (ref) =>
-        ref.sub === 'ledger'
-          ? { exists: () => true, data: () => entryData }
-          : { exists: () => true, data: () => personData },
-      update: (ref, data) =>
-        ref.sub === 'ledger' ? entryUpdate(data) : personUpdate(data),
+      get: async (ref) => {
+        if (ref.sub === 'ledger') return { exists: () => true, data: () => entryData };
+        if (ref.col === 'purchases') {
+          const row = purchaseRows.find(r => r.id === ref.id);
+          return { exists: () => !!row, data: () => row };
+        }
+        return { exists: () => true, data: () => personData };
+      },
+      update: (ref, data) => {
+        if (ref.sub === 'ledger') return entryUpdate(data);
+        if (ref.col === 'purchases') return purchaseUpdate(ref.id, data);
+        return personUpdate(data);
+      },
       delete: () => {},
     });
   }),
@@ -71,7 +91,9 @@ let editLedgerEntry;
 beforeEach(async () => {
   vi.clearAllMocks();
   getDocsCalls = 0;
+  purchaseQueryCalls = 0;
   getDocsCallsAtTransactionOpen = null;
+  purchaseRows = [];
   ({ editLedgerEntry } = await import('../firebase/ledger'));
   // The live state: an Rs 11,000 bill part-paid with Rs 4,000.
   entryData = { type: 'payment', debit: 0, credit: 4000, date: 3, createdAt: 3, seq: 0 };
@@ -157,6 +179,61 @@ describe('the ledger read is not made inside the transaction', () => {
     await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 6000, mode: 'Cash' });
     // One read now serves both the recency guard and the balance recompute.
     expect(getDocsCalls).toBe(1);
+  });
+
+  it('reads the open purchases before the transaction too, for a supplier', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 6000, mode: 'Cash' });
+    expect(purchaseQueryCalls).toBe(1);
+  });
+
+  it('does not read purchases for a customer payment', async () => {
+    await editLedgerEntry('customer', 'cus-1', 'pay-1', { amount: 6000, mode: 'Cash' });
+    expect(purchaseQueryCalls).toBe(0);
+  });
+});
+
+describe('editing a supplier payment re-spreads it over the open bills', () => {
+  // Round-5 finding: a supplier-level payment lowered the supplier's balance
+  // but left the bill reading UNPAID / due ₹11,000 while the header said ₹5,000.
+  beforeEach(() => {
+    purchaseRows = [
+      { id: 'pur-1', billNo: 'PUR-2026-0004', total: 11000, amountPaid: 4000, amountPaidViaSupplier: 4000, balanceDue: 7000, date: 2 },
+    ];
+    entryData = { type: 'payment', debit: 0, credit: 4000, date: 3, createdAt: 3, seq: 0,
+      allocations: [{ purchaseId: 'pur-1', billNo: 'PUR-2026-0004', amount: 4000 }] };
+    allRows = [
+      { id: 'pay-1', ...entryData },
+      { id: 'bill-1', type: 'purchase', debit: 11000, credit: 0, date: 3, createdAt: 2, seq: 0 },
+    ];
+  });
+
+  it('raises the bill\'s paid figure when the payment is raised', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 6000, mode: 'Cash' });
+    const [id, patch] = purchaseUpdate.mock.calls[0];
+    expect(id).toBe('pur-1');
+    expect(patch.amountPaid).toBe(6000);
+    expect(patch.amountPaidViaSupplier).toBe(6000);
+    expect(patch.balanceDue).toBe(5000);
+    // and the ledger row records the new spread
+    expect(entryUpdate.mock.calls[0][0].allocations).toEqual([
+      { purchaseId: 'pur-1', billNo: 'PUR-2026-0004', amount: 6000 },
+    ]);
+  });
+
+  it('gives the bill its due back when the payment is lowered', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 1000, mode: 'Cash' });
+    const [, patch] = purchaseUpdate.mock.calls[0];
+    expect(patch.amountPaid).toBe(1000);
+    expect(patch.balanceDue).toBe(10000);
+  });
+
+  it('never applies more to a bill than it is worth', async () => {
+    await editLedgerEntry('supplier', 'sup-1', 'pay-1', { amount: 20000, mode: 'Cash' });
+    const [, patch] = purchaseUpdate.mock.calls[0];
+    expect(patch.amountPaid).toBe(11000);
+    expect(patch.balanceDue).toBe(0);
+    // the excess stays on the supplier as credit: 11,000 - 20,000
+    expect(personUpdate.mock.calls[0][0].balance).toBe(-9000);
   });
 });
 

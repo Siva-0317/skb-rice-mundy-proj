@@ -199,7 +199,7 @@ export default function Inventory() {
                               missing category
                             </span>
                           )}
-                          <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} items</span>
+                          <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} {catItems.length === 1 ? 'item' : 'items'}</span>
                         </div>
                       </td>
                     </tr>

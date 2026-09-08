@@ -8,6 +8,7 @@ import { Pencil, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import DeleteItemModal from './DeleteItemModal';
 import DeleteCategoryModal from './DeleteCategoryModal';
+import AddCategoryModal from './AddCategoryModal';
 
 export default function ItemsList() {
   const location = useLocation();
@@ -22,6 +23,7 @@ export default function ItemsList() {
   const [editingItem, setEditingItem] = useState(null);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [categoryToDelete, setCategoryToDelete] = useState(null);
+  const [categoryToEdit, setCategoryToEdit] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -151,13 +153,24 @@ export default function ItemsList() {
                       <div className="flex items-center gap-2 min-h-[36px]">
                         {isExpanded ? <ChevronDown className="w-4 h-4 text-textMuted" /> : <ChevronRight className="w-4 h-4 text-textMuted" />}
                         <span className="font-semibold text-textDark">{category.label}</span>
-                        <span className="text-sm text-textMuted ml-2">({category.labelTamil})</span>
+                        {category.labelTamil && (
+                          <span className="text-sm text-textMuted ml-2">({category.labelTamil})</span>
+                        )}
                         {category.isOrphan && (
                           <span className="text-[10px] uppercase tracking-wide bg-debit/10 text-debit border border-debit/20 px-1.5 py-0.5 rounded" title={`These items reference a category "${category.key}" that no longer exists. Edit each item to move it to a real category.`}>
                             missing category
                           </span>
                         )}
-                        <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} items</span>
+                        <span className="ml-auto text-xs bg-panel text-textMuted px-2 py-1 rounded-full">{catItems.length} {catItems.length === 1 ? 'item' : 'items'}</span>
+                        {isOwner && !category.isOrphan && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setCategoryToEdit(category); }}
+                            className="text-textMuted hover:text-gold transition-colors p-1"
+                            title="Rename Category"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
                         {isOwner && !category.isOrphan && (
                           <button
                             onClick={(e) => { e.stopPropagation(); setCategoryToDelete(category); }}
@@ -250,6 +263,13 @@ export default function ItemsList() {
         isOpen={!!categoryToDelete}
         category={categoryToDelete}
         onClose={() => setCategoryToDelete(null)}
+        onSuccess={fetchData}
+      />
+
+      <AddCategoryModal
+        isOpen={!!categoryToEdit}
+        categoryToEdit={categoryToEdit}
+        onClose={() => setCategoryToEdit(null)}
         onSuccess={fetchData}
       />
     </div>

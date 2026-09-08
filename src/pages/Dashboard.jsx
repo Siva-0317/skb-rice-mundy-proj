@@ -175,7 +175,7 @@ export default function Dashboard() {
           <div>
             <p className="text-sm font-medium text-textMuted mb-1 uppercase tracking-wider text-xs">Today's Sales</p>
             <h3 className="font-display text-2xl font-bold text-brownDark">{formatCurrency(stats.todaySales)}</h3>
-            <p className="text-xs text-textMuted mt-1">{stats.todaySalesCount || 0} sales · {(stats.todayBagsMoved || 0).toLocaleString('en-IN')} bags moved</p>
+            <p className="text-xs text-textMuted mt-1">{stats.todaySalesCount || 0} {(stats.todaySalesCount || 0) === 1 ? 'sale' : 'sales'} · {(stats.todayBagsMoved || 0).toLocaleString('en-IN')} bags moved</p>
           </div>
           <div className="p-3 bg-gold/10 text-gold rounded-xl">
             <TrendingUp className="w-6 h-6" />

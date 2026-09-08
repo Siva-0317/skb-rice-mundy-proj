@@ -1,15 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
-import { deleteItem } from '../firebase/items';
+import { deleteItem, getItemTransactionUsage } from '../firebase/items';
 import { useToast } from '../context/ToastContext';
 
 export default function DeleteItemModal({ isOpen, onClose, onSuccess, item }) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [usage, setUsage] = useState(null); // null = still checking
   const { showToast } = useToast();
+
+  // An item on a bill cannot be deleted (deleteItem refuses); find out before
+  // the operator clicks so the dialog explains itself instead of a toast.
+  useEffect(() => {
+    if (!isOpen || !item) return;
+    let cancelled = false;
+    setUsage(null);
+    getItemTransactionUsage(item.id)
+      .then(u => { if (!cancelled) setUsage(u); })
+      .catch(() => { if (!cancelled) setUsage({ purchases: 0, sales: 0 }); });
+    return () => { cancelled = true; };
+  }, [isOpen, item]);
 
   if (!isOpen || !item) return null;
 
   const hasStock = Number(item.stock) > 0;
+  const isChecking = usage === null;
+  const hasHistory = !!usage && (usage.purchases > 0 || usage.sales > 0);
 
   const handleDelete = async () => {
     try {
@@ -45,6 +60,21 @@ export default function DeleteItemModal({ isOpen, onClose, onSuccess, item }) {
         </div>
         
         <div className="p-6 space-y-6">
+          {hasHistory && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3 text-red-800">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-600" />
+              <div className="text-sm">
+                <p className="font-semibold text-red-900 mb-1">Cannot delete — this item has transaction history</p>
+                <p>
+                  <span className="font-bold">'{item.name}'</span> appears on
+                  {usage.sales > 0 && <> {usage.sales} sale bill{usage.sales === 1 ? '' : 's'}</>}
+                  {usage.sales > 0 && usage.purchases > 0 && ' and'}
+                  {usage.purchases > 0 && <> {usage.purchases} purchase bill{usage.purchases === 1 ? '' : 's'}</>}.
+                  Use the Active toggle to hide it from new bills instead.
+                </p>
+              </div>
+            </div>
+          )}
           {hasStock ? (
             <>
               <p className="text-textDark text-sm leading-relaxed">
@@ -75,10 +105,10 @@ export default function DeleteItemModal({ isOpen, onClose, onSuccess, item }) {
             </button>
             <button
               onClick={handleDelete}
-              disabled={isDeleting}
+              disabled={isDeleting || isChecking || hasHistory}
               className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 flex justify-center items-center"
             >
-              {isDeleting ? "Deleting..." : (hasStock ? "Delete Anyway" : "Delete Item")}
+              {isDeleting ? "Deleting..." : isChecking ? "Checking…" : (hasStock ? "Delete Anyway" : "Delete Item")}
             </button>
           </div>
         </div>

@@ -588,3 +588,92 @@ No security-rules change was needed: `categories` and `items` already allow
 `delete: if isOwner()`. The stale comment on the items rule has been corrected.
 
 110 tests passing (was 94), clean build, oxlint 42 warnings / 0 errors.
+
+---
+
+# Fixes applied after QA round 5 (08 Sept 2026)
+
+Live-site test run: 130 cases, 114 pass / 14 fail. The two HIGH and four MEDIUM
+findings are fixed below. Verified with `npx vitest run` (129 tests, all passing —
+19 new: 14 in `round5Fixes.test.js`, 5 in `editLedgerEntry.test.js`) and
+`npx vite build`. oxlint: 0 errors.
+
+## R5-H1 (High) — a negative "Amount paid now" was saved on a sale
+
+Entering `-100` in AMOUNT PAID NOW and saving stored `advance: -100`. The bill
+showed Paid ₹-100 / Due ₹5,500 and the customer's balance rose by ₹100 — a
+negative credit. `createSale`/`editSale` only did `Number(advance) || 0`.
+
+**Fix.** `sales.js` gains `assertNonNegativeMoney` and `assertSaleRows`: both
+create and edit refuse a negative advance, a negative bill-level payment, a
+non-positive bag count or a negative price before any read. `Sales.jsx` mirrors
+it: the Save button is disabled, the field turns red with an inline message,
+and negative bag counts no longer render a negative subtotal as an "advance"
+(the SALE-06 cosmetic finding).
+
+## R5-H2 (High) — deleting a purchase after its bags were sold left phantom stock
+
+Purchase 5 bags (4 → 9), sell 8 (→ 1), delete the purchase: `deletePurchase`
+did `Math.max(0, stock - bags)`, so stock went to 0 instead of -4 and the 4-bag
+shortfall vanished. Deleting the sale afterwards restored +8 → 8 bags on hand
+against a true 4.
+
+**Fix.** The transaction now refuses when `currentStock < bags` with a message
+naming the item, the shortfall and what to do ("delete the related sales or
+adjust the stock first"). `getPurchaseDeletionBlockers` runs the same check up
+front so `DeletePurchaseModal` explains the block and disables the button
+before the user tries.
+
+## R5-M1 (Medium) — inactive items still appeared in the Sales item search
+
+The Active toggle's tooltip promises to hide the item from sales dropdowns; the
+search used the full `getItems()` list. `Sales.jsx` now passes only
+`active !== false` items to `InvoiceRowsTable` (the full list is kept for
+resolving old bills on edit); `NewPurchaseModal` filters the same way.
+
+## R5-M2 (Medium) — duplicate category names; no rename; no Tamil name
+
+"raw rice" could be added alongside "Raw Rice". `addCategory`/`updateCategory`
+now enforce case- and whitespace-insensitive uniqueness on label and key.
+`AddCategoryModal` gains a Tamil-name field, and `ItemsList` gains a pencil next
+to each category header that opens the same modal in edit mode (delete already
+shipped in round 4 — see above — but was not yet deployed at test time). Empty
+Tamil names no longer render as "()".
+
+## R5-M3 (Medium) — a supplier-level payment never reached the bills it paid for
+
+Recording ₹6,000 on the supplier page lowered the supplier's balance to ₹5,000,
+but PUR-2026-0004 still read UNPAID / due ₹11,000. Same money, two answers.
+
+**Fix.** New `firebase/supplierAllocations.js`. `recordSupplierPayment` spreads
+the amount oldest-bill-first over the supplier's open purchases, updates each
+bill's `amountPaid`/`balanceDue` and records `allocations` on the ledger row
+(the description reads "Payment made · Cash · applied to PUR-…"). Purchases gain
+`amountPaidViaSupplier` so the two sources of payment stay distinguishable:
+
+- `editLedgerEntry` on a supplier payment undoes the old spread and re-applies
+  the new amount, writing each bill once.
+- `deleteLedgerEntry` gives the bills their dues back.
+- `deletePurchase` no longer adds back the allocated part (that money was paid
+  and stays as supplier credit), keeps the supplier-payment row, and only strips
+  this bill from its allocations. Bill-level payment rows are deleted as before.
+
+Open bills are read before the transaction opens, for the same reason the
+ledger read is (see round 4): a query inside `runTransaction` can hang.
+
+## R5-M4 (Medium) — an item with sales history could be deleted
+
+`deleteItem` already refused (round 3), but the dialog only warned about stock
+and offered "Delete Anyway"; the refusal arrived as a toast afterwards. New
+`getItemTransactionUsage` counts the sale and purchase bills an item is on;
+`DeleteItemModal` calls it on open, shows the counts, and disables the button.
+
+## Also in this round (Low)
+
+Pluralisation ("1 item", "1 sale"); empty Tamil category label hidden.
+
+## Data left behind by the test run
+
+Two categories could not be removed from the live site at the time (no delete
+UI deployed): `raw rice` (duplicate, created while reproducing R5-M2) and
+`ZZ Test Cat`. Delete both from Masters → Item Masters once this build is live.

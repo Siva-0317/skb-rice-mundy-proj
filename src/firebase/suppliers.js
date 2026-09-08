@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, getDoc, setDoc, query, orderBy, where, limit, serverTimestamp, runTransaction, writeBatch, deleteDoc } from "firebase/firestore";
 import { db } from "./config";
+import { fetchOpenPurchaseRefs, readPurchaseDocs, planAllocation, applyPatches, describeAllocations } from "./supplierAllocations";
 import { withRunningBalance } from "../utils/ledgerBalance";
 
 export const getSuppliers = async () => {
@@ -78,22 +79,32 @@ export const recordSupplierPayment = async (supplierId, paymentData) => {
   const numAmount = Number(amount);
   if (isNaN(numAmount) || numAmount <= 0) throw new Error("Payment amount must be greater than 0");
 
-  // Auto-built description — no free text
-  const desc = `Payment made · ${mode}`;
-
   const supplierRef = doc(db, "suppliers", supplierId);
   const newLedgerRef = doc(collection(db, "suppliers", supplierId, "ledger"));
 
-  await runTransaction(db, async (transaction) => {
+  // Open bills are read before the transaction opens (a collection query inside
+  // runTransaction can hang — see ledger.js). The docs themselves are re-read
+  // inside so the allocation works from committed figures.
+  const openRefs = await fetchOpenPurchaseRefs(supplierId);
+
+  return await runTransaction(db, async (transaction) => {
+    // Reads
     const supplierDoc = await transaction.get(supplierRef);
     if (!supplierDoc.exists()) {
       throw new Error("Supplier does not exist!");
     }
+    const purchaseDocs = await readPurchaseDocs(transaction, openRefs);
 
+    // Compute
     const currentBalance = supplierDoc.data().balance || 0;
     const currentTxnCount = supplierDoc.data().txnCount || 0;
     const newBalance = currentBalance - numAmount;
+    const { allocations, patches } = planAllocation(purchaseDocs, numAmount);
+    const paymentDate = dateVal || serverTimestamp();
+    // Auto-built description — no free text
+    const desc = `Payment made · ${mode}` + describeAllocations(allocations);
 
+    // Writes
     transaction.set(newLedgerRef, {
       type: 'payment',
       desc,
@@ -101,15 +112,20 @@ export const recordSupplierPayment = async (supplierId, paymentData) => {
       debit: 0,
       credit: numAmount,
       balanceAfter: newBalance,
-      date: dateVal || serverTimestamp(),
+      allocations,
+      date: paymentDate,
       createdAt: serverTimestamp()
     });
 
+    applyPatches(transaction, patches, { date: dateVal || new Date(), mode, serverTimestamp });
+
     transaction.update(supplierRef, {
       balance: newBalance,
-      lastPayment: dateVal || serverTimestamp(),
+      lastPayment: paymentDate,
       txnCount: currentTxnCount + 1
     });
+
+    return { allocations, newBalance };
   });
 };
 

@@ -1,6 +1,7 @@
 import { doc, collection, getDocs, query, orderBy, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 import { toMillis } from "../utils/dateIST";
+import { fetchOpenPurchaseRefs, allocationRefs, readPurchaseDocs, planReallocation, applyPatches, describeAllocations } from "./supplierAllocations";
 
 /**
  * Read a person's whole ledger, newest first.
@@ -81,7 +82,14 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
   const edited = { id: entryId, debit: 0, credit: numAmount };
   const newBalance = balanceFromRows(rows.map(r => (r.id === entryId ? edited : r)));
 
-  const desc = note?.trim() ? note.trim() : (isSupplier ? `Payment made (${mode})` : `Payment received (${mode})`);
+  const baseDesc = note?.trim() ? note.trim() : (isSupplier ? `Payment made (${mode})` : `Payment received (${mode})`);
+
+  // A supplier payment is spread over the supplier's open bills. Changing its
+  // amount means undoing the old spread and re-applying the new one, so the
+  // bills' paid/due figures keep agreeing with the ledger.
+  const existing = rows.find(r => r.id === entryId);
+  const oldAllocations = isSupplier ? (existing?.allocations || []) : [];
+  const openRefs = isSupplier ? await fetchOpenPurchaseRefs(personId) : [];
 
   await runTransaction(db, async (transaction) => {
     const entrySnap = await transaction.get(entryRef);
@@ -97,16 +105,26 @@ export const editLedgerEntry = async (personType, personId, entryId, { amount, m
       throw new Error("Person not found");
     }
 
+    const currentAllocations = isSupplier ? (entrySnap.data().allocations || oldAllocations) : [];
+    const purchaseDocs = isSupplier
+      ? await readPurchaseDocs(transaction, [...allocationRefs(currentAllocations), ...openRefs])
+      : [];
+    const { allocations, patches } = isSupplier
+      ? planReallocation(purchaseDocs, currentAllocations, numAmount)
+      : { allocations: [], patches: [] };
+
     transaction.update(entryRef, {
       mode: mode || 'Cash',
       note: note || '',
-      desc,
+      desc: baseDesc + (isSupplier ? describeAllocations(allocations) : ''),
       credit: numAmount,
       // Clearing debit is what repairs a row an earlier bad edit mangled.
       debit: 0,
       balanceAfter: newBalance,
+      ...(isSupplier ? { allocations } : {}),
       editedAt: serverTimestamp()
     });
+    applyPatches(transaction, patches, { mode: mode || 'Cash', serverTimestamp });
     transaction.update(personRef, { balance: newBalance });
   });
 };
@@ -134,6 +152,12 @@ export const deleteLedgerEntry = async (personType, personId, entryId) => {
     if (!personSnap.exists()) {
       throw new Error("Person not found");
     }
+
+    // Deleting a supplier payment gives the bills it covered their dues back.
+    const allocations = collectionName === 'suppliers' ? (entryData.allocations || []) : [];
+    const purchaseDocs = await readPurchaseDocs(transaction, allocationRefs(allocations));
+    const { patches } = planReallocation(purchaseDocs, allocations, 0);
+    applyPatches(transaction, patches, { serverTimestamp });
 
     transaction.update(personRef, { balance: newBalance });
     transaction.delete(entryRef);
